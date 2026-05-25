@@ -28,6 +28,7 @@
   DROP TABLE IF EXISTS public.clientes CASCADE;
   DROP TABLE IF EXISTS public.profiles CASCADE;
   DROP TABLE IF EXISTS public.app_configuracion CASCADE;
+  DROP TABLE IF EXISTS public.parametros_lista CASCADE;
 
   -- Eliminar funciones
   DROP FUNCTION IF EXISTS public.update_updated_at() CASCADE;

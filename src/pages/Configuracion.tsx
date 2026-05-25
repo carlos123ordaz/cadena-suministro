@@ -468,7 +468,7 @@ export function Configuracion() {
             </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
               <input type="checkbox" checked={inviteForm.es_vendedor} onChange={e => setInviteForm(f => ({ ...f, es_vendedor: e.target.checked }))} />
-              Es vendedor (aparece en el selector de vendedores de OPCI)
+              Es vendedor
             </label>
           </div>
         )}
@@ -497,7 +497,7 @@ export function Configuracion() {
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
             <input type="checkbox" checked={editUserForm.es_vendedor} onChange={e => setEditUserForm(f => ({ ...f, es_vendedor: e.target.checked }))} />
-            Es vendedor (aparece en el selector de vendedores de OPCI)
+            Es vendedor
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
             <input type="checkbox" checked={editUserForm.activo} onChange={e => setEditUserForm(f => ({ ...f, activo: e.target.checked }))} />

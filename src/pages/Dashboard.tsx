@@ -96,45 +96,87 @@ async function loadDashboardAlerts(): Promise<Alert[]> {
   return out
 }
 
-// ─── Status bar helper ────────────────────────────────────────────────────────
+// ─── OPCI en el tiempo ────────────────────────────────────────────────────────
 
-const OPCI_STATUS_ORDER: string[] = [
-  'Recibida',
-  'En evaluación',
-  'En compra local',
-  'En importación',
-  'Pendiente de recepción',
-  'Pendiente de facturación',
-  'Facturada',
-  'Pendiente de despacho',
-  'Pendiente de cobranza',
-  'Cerrada',
-  'Observada',
-]
+interface MonthBucket { month: string; label: string; count: number }
 
-const STATUS_COLOR: Record<string, string> = {
-  'Recibida': 'var(--info)',
-  'En evaluación': 'var(--info)',
-  'En compra local': 'var(--violet)',
-  'En importación': 'var(--violet)',
-  'Pendiente de recepción': 'var(--warn)',
-  'Pendiente de facturación': 'var(--warn)',
-  'Facturada': 'var(--teal)',
-  'Pendiente de despacho': 'var(--warn)',
-  'Pendiente de cobranza': 'var(--warn)',
-  'Cerrada': 'var(--ok)',
-  'Observada': 'var(--bad)',
+function buildTimeSeries(rows: { fecha_recepcion: string | null }[]): MonthBucket[] {
+  const map: Record<string, number> = {}
+  for (const row of rows) {
+    if (!row.fecha_recepcion) continue
+    const month = row.fecha_recepcion.slice(0, 7)
+    map[month] = (map[month] ?? 0) + 1
+  }
+  const sorted = Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).slice(-14)
+  return sorted.map(([month, count]) => ({
+    month,
+    label: new Date(month + '-15').toLocaleDateString('es-PE', { month: 'short', year: '2-digit' }),
+    count,
+  }))
 }
 
-function buildStatusDist(operaciones: Operacion[]): { estado: string; count: number; pct: number }[] {
-  const map: Record<string, number> = {}
-  for (const op of operaciones) {
-    map[op.estado] = (map[op.estado] ?? 0) + 1
+// ─── MiniBarChart ─────────────────────────────────────────────────────────────
+
+function MiniBarChart({ data }: { data: MonthBucket[] }) {
+  if (data.length === 0) {
+    return <div style={{ color: 'var(--text-3)', fontSize: 12, textAlign: 'center', padding: 24 }}>Sin datos</div>
   }
-  const total = operaciones.length || 1
-  return OPCI_STATUS_ORDER
-    .filter(s => map[s])
-    .map(s => ({ estado: s, count: map[s], pct: (map[s] / total) * 100 }))
+  const max = Math.max(...data.map(d => d.count), 1)
+  const total = data.reduce((s, d) => s + d.count, 0)
+  const avg = Math.round(total / data.length)
+  const peak = data.reduce((a, b) => b.count > a.count ? b : a)
+  const last = data[data.length - 1]
+  const prev = data[data.length - 2]
+  const trend = prev ? last.count - prev.count : 0
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 12 }}>
+      {/* Stats summary */}
+      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
+        {[
+          { label: 'Total período', value: total },
+          { label: 'Promedio/mes', value: avg },
+          { label: 'Mes pico', value: `${peak.count}`, sub: peak.label },
+          { label: 'vs mes ant.', value: trend > 0 ? `+${trend}` : String(trend), tone: trend > 0 ? 'var(--ok)' : trend < 0 ? 'var(--bad)' : 'var(--text-3)' },
+        ].map(stat => (
+          <div key={stat.label} style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ fontSize: 17, fontWeight: 700, color: stat.tone ?? 'var(--text)', lineHeight: 1.2 }}>
+              {stat.value}
+            </div>
+            {stat.sub && <div style={{ fontSize: 9.5, color: 'var(--accent)', lineHeight: 1 }}>{stat.sub}</div>}
+            <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>{stat.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Bars — flex:1 fills remaining card space */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', gap: 4, minHeight: 60 }}>
+        {data.map(item => (
+          <div
+            key={item.month}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, height: '100%', justifyContent: 'flex-end' }}
+          >
+            <div style={{ fontSize: 9, color: 'var(--text-2)', fontWeight: 600, lineHeight: 1 }}>{item.count}</div>
+            <div
+              title={`${item.label}: ${item.count} OPCI`}
+              style={{
+                width: '100%',
+                height: `${Math.max((item.count / max) * 80, 3)}%`,
+                background: item.month === peak.month ? 'var(--accent)' : 'var(--accent-soft)',
+                borderRadius: '3px 3px 0 0',
+                transition: 'height 0.4s ease',
+                border: item.month === last.month ? '1.5px solid var(--accent)' : 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+            <div style={{ fontSize: 8.5, color: 'var(--text-3)', textAlign: 'center', whiteSpace: 'nowrap', lineHeight: 1 }}>
+              {item.label}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 // ─── Spinner ──────────────────────────────────────────────────────────────────
@@ -154,57 +196,6 @@ function Spinner() {
     >
       <Icon name="spinner" size={18} style={{ animation: 'spin 1s linear infinite' }} />
       Cargando datos…
-    </div>
-  )
-}
-
-// ─── StatusBar ────────────────────────────────────────────────────────────────
-
-function StatusBar({ items }: { items: { estado: string; count: number; pct: number }[] }) {
-  if (items.length === 0) {
-    return <div style={{ color: 'var(--text-3)', fontSize: 12, textAlign: 'center', padding: 24 }}>Sin datos</div>
-  }
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {items.map(item => (
-        <div key={item.estado} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div
-            style={{
-              fontSize: 12,
-              color: 'var(--text-2)',
-              width: 180,
-              flexShrink: 0,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
-            {item.estado}
-          </div>
-          <div
-            style={{
-              flex: 1,
-              height: 6,
-              background: 'var(--border)',
-              borderRadius: 4,
-              overflow: 'hidden',
-            }}
-          >
-            <div
-              style={{
-                height: '100%',
-                width: `${item.pct}%`,
-                background: STATUS_COLOR[item.estado] ?? 'var(--accent)',
-                borderRadius: 4,
-                transition: 'width 0.4s',
-              }}
-            />
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--text-3)', width: 24, textAlign: 'right', flexShrink: 0 }}>
-            {item.count}
-          </div>
-        </div>
-      ))}
     </div>
   )
 }
@@ -284,6 +275,7 @@ export function Dashboard() {
   const [transito, setTransito] = useState<Importacion[]>([])
   const [cobranza, setCobranza] = useState<FacturaVenta[]>([])
   const [alerts, setAlerts] = useState<Alert[]>([])
+  const [opciHistory, setOpciHistory] = useState<MonthBucket[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -298,12 +290,14 @@ export function Dashboard() {
           transitoRes,
           cobranzaRes,
           alertsData,
+          historyRes,
         ] = await Promise.all([
           getDashboardStats(),
           getRecentOperaciones(15),
           getImportaciones({ status: 'En tránsito' }, { page: 1, pageSize: 10 }),
           getCobranzaPendiente(),
           loadDashboardAlerts(),
+          supabase.from('operaciones').select('fecha_recepcion').not('fecha_recepcion', 'is', null),
         ])
 
         if (cancelled) return
@@ -316,6 +310,7 @@ export function Dashboard() {
         setTransito(transitoRes.data ?? [])
         setCobranza((cobranzaRes.data ?? []).slice(0, 8))
         setAlerts(alertsData)
+        setOpciHistory(buildTimeSeries((historyRes.data ?? []) as { fecha_recepcion: string | null }[]))
       } catch (e: unknown) {
         if (!cancelled) setError((e as Error)?.message ?? 'Error al cargar el dashboard')
       } finally {
@@ -509,7 +504,6 @@ export function Dashboard() {
   }
 
   const s = stats!
-  const statusDist = buildStatusDist(recentOps)
 
   return (
     <div className="page">
@@ -587,12 +581,8 @@ export function Dashboard() {
           marginBottom: 20,
         }}
       >
-        <Card title="OPCI por estado" icon="chart">
-          {recentOps.length === 0 ? (
-            <div style={{ color: 'var(--text-3)', fontSize: 12, padding: 8 }}>Sin operaciones recientes</div>
-          ) : (
-            <StatusBar items={statusDist} />
-          )}
+        <Card title="OPCI por mes" icon="chart" bodyStyle={{ display: 'flex', flexDirection: 'column' }}>
+          <MiniBarChart data={opciHistory} />
         </Card>
 
         <Card title="Alertas activas" icon="bell">

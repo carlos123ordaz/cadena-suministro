@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useCallback } from 'react'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import { AgregarItemOciModal } from './AgregarItemOciModal'
 import {
   Icon, Card, DataTable, StatusBadge, OCI_STATUS_TONE, OPCI_STATUS_TONE,
   RECEPCION_STATUS_TONE, EtaCell, Tabs, Timeline, MetaGrid, Modal, Badge,
@@ -7,7 +8,7 @@ import {
 } from '@/components/ui'
 import type { Column } from '@/components/ui'
 import { supabase } from '@/lib/supabase'
-import { getImportacion, addCostoImportacion, calcularCostoUnitario } from '@/services/importaciones.service'
+import { getImportacion, addCostoImportacion, calcularCostoUnitario, getParametrosLista } from '@/services/importaciones.service'
 import { getDocumentos } from '@/services/documentos.service'
 import { getComentarios, addComentario, registrarEvento, getHistorial } from '@/services/historial.service'
 import { useAuth } from '@/context/AuthContext'
@@ -52,6 +53,7 @@ const defaultCostoForm: CostoForm = {
 export function ImportacionDetail() {
   const { id: importacionId = '' } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const { profile } = useAuth()
   const [imp, setImp] = useState<FullImportacion | null>(null)
   const [historial, setHistorial] = useState<HistorialEvento[]>([])
@@ -59,7 +61,15 @@ export function ImportacionDetail() {
   const [comentarios, setComentarios] = useState<Comentario[]>([])
   const [distribucion, setDistribucion] = useState<Record<string, unknown>[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState('resumen')
+  const [tab, setTab] = useState(() => {
+    const t = new URLSearchParams(location.search).get('tab') ?? 'resumen'
+    return TABS.some(x => x.id === t) ? t : 'resumen'
+  })
+
+  useEffect(() => {
+    const t = new URLSearchParams(location.search).get('tab') ?? 'resumen'
+    setTab(TABS.some(x => x.id === t) ? t : 'resumen')
+  }, [location.search])
 
   const [showUpload, setShowUpload] = useState(false)
 
@@ -73,24 +83,14 @@ export function ImportacionDetail() {
   const [savingOci, setSavingOci] = useState(false)
   const [ociError, setOciError] = useState<string | null>(null)
   const [proveedoresList, setProveedoresList] = useState<{ id: string; razon_social: string }[]>([])
-  const [ociForm, setOciForm] = useState({ proveedor_id: '', num_oc: '', fecha_oc: new Date().toISOString().slice(0, 10), moneda: 'USD', monto_total: '', notas: '' })
+  const [categoriasFormaPago, setCategoriasFormaPago] = useState<string[]>([])
+  const [formasPago, setFormasPago] = useState<string[]>([])
+  const [ociForm, setOciForm] = useState({ proveedor_id: '', num_oc: '', fecha_oc: new Date().toISOString().slice(0, 10), moneda: 'USD', monto_total: '', categoria_forma_pago: '', forma_pago: '', notas: '' })
 
   const [selectedOci, setSelectedOci] = useState<Record<string, unknown> | null>(null)
   const [showOciDetail, setShowOciDetail] = useState(false)
   const [showOciAddItem, setShowOciAddItem] = useState(false)
-  const [savingOciItem, setSavingOciItem] = useState(false)
-  const [ociItemError, setOciItemError] = useState<string | null>(null)
-  const [ociItemForm, setOciItemForm] = useState({ item_oc: '', producto_id: '', codigo_comercial: '', descripcion: '', cantidad: '', unidad_medida: '', moneda: 'USD', pcu1: '', operacion_item_id: '', opci_id: '' })
-  const [ociOpciItems, setOciOpciItems] = useState<{ id: string; item_op: string; codigo_comercial: string; descripcion: string; cantidad: number; unidad_medida: string; producto_id?: string }[]>([])
-  const [opciSearch, setOpciSearch] = useState('')
-  const [opciSugeridas, setOpciSugeridas] = useState<{ id: string; correlativo_opci: string }[]>([])
-  const [showOpciDrop, setShowOpciDrop] = useState(false)
-  const opciDropRef = useRef<HTMLDivElement>(null)
 
-  const [productosSearch, setProductosSearch] = useState('')
-  const [productosSugeridos, setProductosSugeridos] = useState<{ id: string; codigo_comercial: string; descripcion: string; unidad_medida: string }[]>([])
-  const [showProductosDrop, setShowProductosDrop] = useState(false)
-  const productoDropRef = useRef<HTMLDivElement>(null)
 
   const [newOciNota, setNewOciNota] = useState('')
   const [savingNota, setSavingNota] = useState(false)
@@ -116,76 +116,9 @@ export function ImportacionDetail() {
     if (!showAddOci) return
     supabase.from('proveedores').select('id, razon_social').eq('activo', true).order('razon_social')
       .then(({ data }) => setProveedoresList((data ?? []) as { id: string; razon_social: string }[]))
+    getParametrosLista('categoria_forma_pago').then(setCategoriasFormaPago)
+    getParametrosLista('forma_pago').then(setFormasPago)
   }, [showAddOci])
-
-  useEffect(() => {
-    if (productosSearch.length > 0 && productosSearch.length < 2) { setProductosSugeridos([]); setShowProductosDrop(false); return }
-    if (productosSearch.length === 0) return
-    const timer = setTimeout(async () => {
-      const { data } = await supabase.from('productos').select('id, codigo_comercial, descripcion, unidad_medida')
-        .or(`codigo_comercial.ilike.%${productosSearch}%,descripcion.ilike.%${productosSearch}%`)
-        .eq('activo', true).eq('tipo', 'Producto').limit(20)
-      setProductosSugeridos((data ?? []) as { id: string; codigo_comercial: string; descripcion: string; unidad_medida: string }[])
-      setShowProductosDrop(true)
-    }, 250)
-    return () => clearTimeout(timer)
-  }, [productosSearch])
-
-  async function handleProductoFocus() {
-    setShowProductosDrop(true)
-    if (!productosSearch) {
-      const { data } = await supabase.from('productos').select('id, codigo_comercial, descripcion, unidad_medida')
-        .eq('activo', true).eq('tipo', 'Producto').order('codigo_comercial').limit(20)
-      setProductosSugeridos((data ?? []) as { id: string; codigo_comercial: string; descripcion: string; unidad_medida: string }[])
-    }
-  }
-
-  useEffect(() => {
-    if (!showOciAddItem) { setOciOpciItems([]); setOpciSearch(''); setOpciSugeridas([]) }
-  }, [showOciAddItem])
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (productoDropRef.current && !productoDropRef.current.contains(e.target as Node)) setShowProductosDrop(false)
-      if (opciDropRef.current && !opciDropRef.current.contains(e.target as Node)) setShowOpciDrop(false)
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
-
-  function selectProducto(p: { id: string; codigo_comercial: string; descripcion: string; unidad_medida: string }) {
-    setOciItemForm(f => ({ ...f, producto_id: p.id, codigo_comercial: p.codigo_comercial, descripcion: p.descripcion, unidad_medida: p.unidad_medida }))
-    setProductosSearch(p.codigo_comercial)
-    setShowProductosDrop(false)
-  }
-
-  useEffect(() => {
-    if (opciSearch.length > 0 && opciSearch.length < 2) { setOpciSugeridas([]); return }
-    if (opciSearch.length === 0) return
-    const t = setTimeout(async () => {
-      const { data } = await supabase.from('operaciones')
-        .select('id, correlativo_opci')
-        .ilike('correlativo_opci', `%${opciSearch}%`)
-        .not('estado', 'in', '("Cerrada","Anulada")')
-        .order('correlativo_opci')
-        .limit(20)
-      setOpciSugeridas((data ?? []) as { id: string; correlativo_opci: string }[])
-      setShowOpciDrop(true)
-    }, 250)
-    return () => clearTimeout(t)
-  }, [opciSearch])
-
-  async function handleOpciFocus() {
-    setShowOpciDrop(true)
-    if (!opciSearch) {
-      const { data } = await supabase.from('operaciones')
-        .select('id, correlativo_opci')
-        .not('estado', 'in', '("Cerrada","Anulada")')
-        .order('correlativo_opci')
-        .limit(20)
-      setOpciSugeridas((data ?? []) as { id: string; correlativo_opci: string }[])
-    }
-  }
 
   async function handleAddOci() {
     if (!ociForm.proveedor_id || !ociForm.num_oc || !ociForm.fecha_oc) {
@@ -202,53 +135,16 @@ export function ImportacionDetail() {
       fecha_oc: ociForm.fecha_oc,
       moneda: ociForm.moneda,
       monto_total: parseFloat(ociForm.monto_total) || 0,
+      categoria_forma_pago: ociForm.categoria_forma_pago || null,
+      forma_pago: ociForm.forma_pago || null,
       notas: ociForm.notas || null,
       status: 'Borrador',
     })
     setSavingOci(false)
     if (error) { setOciError((error as Error).message ?? 'Error al crear.'); return }
     setShowAddOci(false)
-    setOciForm({ proveedor_id: '', num_oc: '', fecha_oc: new Date().toISOString().slice(0, 10), moneda: 'USD', monto_total: '', notas: '' })
+    setOciForm({ proveedor_id: '', num_oc: '', fecha_oc: new Date().toISOString().slice(0, 10), moneda: 'USD', monto_total: '', categoria_forma_pago: '', forma_pago: '', notas: '' })
     load()
-  }
-
-  async function handleAddOciItem() {
-    if (!selectedOci || !ociItemForm.descripcion.trim() || !ociItemForm.cantidad || !ociItemForm.pcu1) {
-      setOciItemError('Descripción, cantidad y precio unitario son obligatorios.')
-      return
-    }
-    setSavingOciItem(true)
-    setOciItemError(null)
-    const cantidad = parseFloat(ociItemForm.cantidad)
-    const pcu1 = parseFloat(ociItemForm.pcu1)
-    const linkedItem = ociOpciItems.find(i => i.id === ociItemForm.operacion_item_id)
-    const { error } = await supabase.from('orden_compra_items').insert({
-      orden_compra_id: selectedOci.id as string,
-      producto_id: ociItemForm.producto_id || null,
-      operacion_id: (selectedOci.operacion_id as string) || null,
-      operacion_item_id: ociItemForm.operacion_item_id || null,
-      item_oc: ociItemForm.item_oc || null,
-      item_op: linkedItem?.item_op || null,
-      codigo_comercial: ociItemForm.codigo_comercial || null,
-      descripcion: ociItemForm.descripcion.trim(),
-      cantidad,
-      unidad_medida: ociItemForm.unidad_medida || null,
-      moneda: ociItemForm.moneda || 'USD',
-      pcu1,
-      monto_total: cantidad * pcu1,
-    })
-    setSavingOciItem(false)
-    if (error) { setOciItemError((error as Error).message ?? 'Error al guardar.'); return }
-    setShowOciAddItem(false)
-    setOciItemForm({ item_oc: '', producto_id: '', codigo_comercial: '', descripcion: '', cantidad: '', unidad_medida: '', moneda: 'USD', pcu1: '', operacion_item_id: '', opci_id: '' })
-    setProductosSearch('')
-    // Reload full import to get updated items, then refresh selectedOci
-    const impRes = await getImportacion(importacionId)
-    if (impRes.data) {
-      setImp(impRes.data as unknown as FullImportacion)
-      const refreshed = (impRes.data.ordenes ?? []).find(o => (o as unknown as Record<string, unknown>).id === selectedOci?.id)
-      if (refreshed) setSelectedOci(refreshed as unknown as Record<string, unknown>)
-    }
   }
 
   async function handleAddOciNota() {
@@ -435,7 +331,7 @@ export function ImportacionDetail() {
             rows={(imp.ordenes ?? []) as Record<string, unknown>[]}
             idKey="id"
             emptyMessage="Sin órdenes de compra asociadas"
-            onRowClick={row => { setSelectedOci(row); setOciItemError(null); setShowOciDetail(true) }}
+            onRowClick={row => { setSelectedOci(row); setShowOciDetail(true) }}
           />
         </Card>
       )}
@@ -636,7 +532,7 @@ export function ImportacionDetail() {
                 <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>
                   Ítems ({((selectedOci.items as unknown[]) ?? []).length})
                 </span>
-                <button className="btn primary xs" onClick={() => { setOciItemError(null); setOciItemForm({ item_oc: '', producto_id: '', codigo_comercial: '', descripcion: '', cantidad: '', unidad_medida: '', moneda: (selectedOci.moneda as string) ?? 'USD', pcu1: '', operacion_item_id: '', opci_id: '' }); setProductosSearch(''); setOpciSearch(''); setOpciSugeridas([]); setShowOciAddItem(true) }}>
+                <button className="btn primary xs" onClick={() => setShowOciAddItem(true)}>
                   <Icon name="plus" size={11} /> Agregar ítem
                 </button>
               </div>
@@ -700,168 +596,21 @@ export function ImportacionDetail() {
         )}
       </Modal>
 
-      {/* Modal agregar ítem a OCI */}
-      <Modal open={showOciAddItem} onClose={() => setShowOciAddItem(false)} title="Agregar ítem a la OCI" size="md"
-        footer={
-          <>
-            <button className="btn" onClick={() => setShowOciAddItem(false)}>Cancelar</button>
-            <button className="btn primary" onClick={handleAddOciItem} disabled={savingOciItem || !ociItemForm.cantidad || !ociItemForm.pcu1}>
-              {savingOciItem ? 'Guardando…' : 'Agregar ítem'}
-            </button>
-          </>
-        }>
-        {ociItemError && <div style={{ background: 'var(--bad-soft)', border: '1px solid var(--bad)', borderRadius: 6, padding: '8px 12px', fontSize: 12.5, color: 'var(--bad)', marginBottom: 12 }}>{ociItemError}</div>}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          {/* OPCI search → ítem de esa OPCI */}
-          <div className="form-field" style={{ gridColumn: '1 / -1' }}>
-            <label className="form-label">Ítem OPCI que origina esta compra</label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <div style={{ flex: '0 0 200px', position: 'relative' }} ref={opciDropRef}>
-                <input
-                  className="input"
-                  value={opciSearch}
-                  onChange={e => {
-                    setOpciSearch(e.target.value)
-                    if (!e.target.value) {
-                      setOciItemForm(f => ({ ...f, opci_id: '', operacion_item_id: '' }))
-                      setOciOpciItems([])
-                    }
-                  }}
-                  onFocus={handleOpciFocus}
-                  placeholder="Buscar OPCI…"
-                  style={{ width: '100%' }}
-                />
-                {showOpciDrop && opciSugeridas.length > 0 && (
-                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', maxHeight: 200, overflowY: 'auto' }}>
-                    {opciSugeridas.map(o => (
-                      <div key={o.id}
-                        style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5 }}
-                        onMouseDown={() => {
-                          setOpciSearch(o.correlativo_opci)
-                          setOciItemForm(f => ({ ...f, opci_id: o.id, operacion_item_id: '' }))
-                          setOciOpciItems([])
-                          setShowOpciDrop(false)
-                          supabase.from('operacion_items')
-                            .select('id, item_op, codigo_comercial, descripcion, cantidad, unidad_medida, producto_id')
-                            .eq('operacion_id', o.id).order('item_op')
-                            .then(({ data }) => setOciOpciItems((data ?? []) as typeof ociOpciItems))
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--panel-2)')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                      >
-                        <span className="mono" style={{ color: 'var(--accent)', fontWeight: 600 }}>{o.correlativo_opci}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {ociOpciItems.length > 0 && (
-                <select
-                  className="select"
-                  value={ociItemForm.operacion_item_id}
-                  onChange={e => {
-                    const sel = ociOpciItems.find(i => i.id === e.target.value)
-                    setOciItemForm(f => ({
-                      ...f,
-                      operacion_item_id: e.target.value,
-                      ...(sel ? {
-                        descripcion: sel.descripcion,
-                        codigo_comercial: sel.codigo_comercial,
-                        unidad_medida: sel.unidad_medida,
-                        producto_id: sel.producto_id ?? '',
-                      } : {}),
-                    }))
-                    if (sel?.codigo_comercial) setProductosSearch(sel.codigo_comercial)
-                  }}
-                  style={{ flex: 1 }}
-                >
-                  <option value="">— Seleccionar ítem —</option>
-                  {ociOpciItems.map(i => (
-                    <option key={i.id} value={i.id}>
-                      {i.item_op} · {i.codigo_comercial} ({i.cantidad} {i.unidad_medida})
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-          </div>
-          <div className="form-field" style={{ gridColumn: '1 / -1' }} ref={productoDropRef}>
-            <label className="form-label">Buscar producto (código comercial)</label>
-            <div style={{ position: 'relative' }}>
-              <input
-                className="input"
-                value={productosSearch}
-                onChange={e => {
-                  setProductosSearch(e.target.value)
-                  if (!e.target.value) setOciItemForm(f => ({ ...f, producto_id: '', codigo_comercial: '', descripcion: '', unidad_medida: '' }))
-                }}
-                onFocus={handleProductoFocus}
-                style={{ width: '100%', fontFamily: 'var(--font-mono)' }}
-                placeholder="Código comercial o descripción…"
-              />
-              {showProductosDrop && productosSugeridos.length > 0 && (
-                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', maxHeight: 220, overflowY: 'auto' }}>
-                  {productosSugeridos.map(p => (
-                    <div key={p.id}
-                      style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5 }}
-                      onMouseDown={() => selectProducto(p)}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--panel-2)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                      <span className="mono" style={{ color: 'var(--accent-2)', fontWeight: 600, marginRight: 8 }}>{p.codigo_comercial}</span>
-                      <span style={{ color: 'var(--text-2)' }}>{p.descripcion}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-          {ociItemForm.descripcion && (
-            <div style={{ gridColumn: '1 / -1', padding: '6px 10px', background: 'var(--accent-soft)', borderRadius: 6, fontSize: 12 }}>
-              <span className="muted">Descripción: </span><strong>{ociItemForm.descripcion}</strong>
-            </div>
-          )}
-          <div className="form-field">
-            <label className="form-label">Ítem OC</label>
-            <input className="input" value={ociItemForm.item_oc} onChange={e => setOciItemForm(f => ({ ...f, item_oc: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} placeholder="1, 2, 3…" />
-          </div>
-          <div className="form-field">
-            <label className="form-label">Cantidad *</label>
-            <input type="number" className="input" value={ociItemForm.cantidad} onChange={e => setOciItemForm(f => ({ ...f, cantidad: e.target.value }))} style={{ width: '100%' }} step="1" min="0" />
-          </div>
-          <div className="form-field">
-            <label className="form-label">Unidad de medida</label>
-            <input
-              list="umd-oci"
-              className="input"
-              value={ociItemForm.unidad_medida}
-              onChange={e => setOciItemForm(f => ({ ...f, unidad_medida: e.target.value }))}
-              placeholder="UN, UND, KG…"
-              style={{ width: '100%' }}
-            />
-            <datalist id="umd-oci">
-              {['UN','UND','KG','M','M2','M3','L','GLN','PAR','SET','CAJA','ROLLO','HRS','TON','PZA'].map(u => <option key={u} value={u} />)}
-            </datalist>
-          </div>
-          <div className="form-field">
-            <label className="form-label">Moneda</label>
-            <select className="select" value={ociItemForm.moneda} onChange={e => setOciItemForm(f => ({ ...f, moneda: e.target.value }))} style={{ width: '100%' }}>
-              {['USD','PEN','EUR'].map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-          <div className="form-field">
-            <label className="form-label">Precio unitario *</label>
-            <input type="number" className="input" value={ociItemForm.pcu1} onChange={e => setOciItemForm(f => ({ ...f, pcu1: e.target.value }))} style={{ width: '100%' }} step="0.01" min="0" />
-          </div>
-          {ociItemForm.cantidad && ociItemForm.pcu1 && (
-            <div style={{ gridColumn: '1 / -1', background: 'var(--panel-2)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 12px', fontSize: 12.5 }}>
-              <span className="muted">Total: </span>
-              <span className="mono" style={{ fontWeight: 600 }}>
-                {(parseFloat(ociItemForm.cantidad || '0') * parseFloat(ociItemForm.pcu1 || '0')).toLocaleString('es-PE', { minimumFractionDigits: 2 })} {ociItemForm.moneda}
-              </span>
-            </div>
-          )}
-        </div>
-      </Modal>
+      <AgregarItemOciModal
+        open={showOciAddItem}
+        onClose={() => setShowOciAddItem(false)}
+        ordenCompraId={selectedOci?.id as string ?? ''}
+        ordenMoneda={selectedOci?.moneda as string}
+        operacionId={selectedOci?.operacion_id as string}
+        onSuccess={async () => {
+          const impRes = await getImportacion(importacionId)
+          if (impRes.data) {
+            setImp(impRes.data as unknown as FullImportacion)
+            const refreshed = (impRes.data.ordenes ?? []).find(o => (o as unknown as Record<string, unknown>).id === selectedOci?.id)
+            if (refreshed) setSelectedOci(refreshed as unknown as Record<string, unknown>)
+          }
+        }}
+      />
 
       {/* Modal nueva OCI */}
       <Modal open={showAddOci} onClose={() => setShowAddOci(false)} title="Nueva OCI para este grupo" size="md"
@@ -899,6 +648,24 @@ export function ImportacionDetail() {
           <div className="form-field">
             <label className="form-label">Monto total</label>
             <input type="number" className="input" value={ociForm.monto_total} onChange={e => setOciForm(f => ({ ...f, monto_total: e.target.value }))} style={{ width: '100%' }} step="0.01" min="0" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Categoría forma de pago</label>
+            <select className="select" value={ociForm.categoria_forma_pago}
+              onChange={e => setOciForm(f => ({ ...f, categoria_forma_pago: e.target.value, forma_pago: '' }))}
+              style={{ width: '100%' }}>
+              <option value="">— Sin especificar —</option>
+              {categoriasFormaPago.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="form-field">
+            <label className="form-label">Forma de pago</label>
+            <select className="select" value={ociForm.forma_pago}
+              onChange={e => setOciForm(f => ({ ...f, forma_pago: e.target.value }))}
+              style={{ width: '100%' }}>
+              <option value="">— Sin especificar —</option>
+              {formasPago.map(fp => <option key={fp} value={fp}>{fp}</option>)}
+            </select>
           </div>
           <div className="form-field" style={{ gridColumn: '1 / -1' }}>
             <label className="form-label">Notas</label>

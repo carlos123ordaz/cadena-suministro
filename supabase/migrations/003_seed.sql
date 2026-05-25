@@ -14,7 +14,32 @@
 -- ---------------------------------------------------------------------------
 -- app_configuracion
 -- ---------------------------------------------------------------------------
-INSERT INTO public.app_configuracion (clave, valor) VALUES ('correlativo_opci_inicio', '1');
+INSERT INTO public.app_configuracion (clave, valor) VALUES
+  ('correlativo_opci_inicio', '1'),
+  ('empresa',                 ''),
+  ('ruc',                     ''),
+  ('ciudad',                  ''),
+  ('moneda_base',             'USD');
+
+-- ---------------------------------------------------------------------------
+-- parametros_lista
+-- ---------------------------------------------------------------------------
+INSERT INTO public.parametros_lista (tipo, valor, orden) VALUES
+  ('categoria_forma_pago', 'Anticipo/Contado',  1),
+  ('categoria_forma_pago', 'Anticipo/Crédito',  2),
+  ('categoria_forma_pago', 'Crédito',            3),
+  ('categoria_forma_pago', 'Demo',               4),
+  ('categoria_forma_pago', 'Garantía',           5),
+  ('forma_pago', 'Contado',                               1),
+  ('forma_pago', 'Transferencia anticipada',              2),
+  ('forma_pago', '30% anticipo + 70% contraentrega',     3),
+  ('forma_pago', '50% anticipo + 50% contraentrega',     4),
+  ('forma_pago', 'Crédito 15 días',                       5),
+  ('forma_pago', 'Crédito 30 días',                       6),
+  ('forma_pago', 'Crédito 45 días',                       7),
+  ('forma_pago', 'Crédito 60 días',                       8),
+  ('forma_pago', 'Crédito 90 días',                       9),
+  ('forma_pago', 'Carta de crédito',                     10);
 
 -- ---------------------------------------------------------------------------
 -- almacenes

@@ -686,3 +686,16 @@ CREATE INDEX idx_comentarios_entidad ON public.comentarios (entidad_tipo, entida
 CREATE TRIGGER trg_comentarios_updated_at
   BEFORE UPDATE ON public.comentarios
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- parametros_lista  (listas de valores configurables)
+-- ---------------------------------------------------------------------------
+CREATE TABLE public.parametros_lista (
+  id      UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+  tipo    TEXT    NOT NULL,
+  valor   TEXT    NOT NULL,
+  orden   INT     DEFAULT 0,
+  activo  BOOLEAN DEFAULT TRUE
+);
+
+CREATE INDEX idx_parametros_lista_tipo ON public.parametros_lista (tipo, activo);

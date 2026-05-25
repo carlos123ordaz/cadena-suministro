@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon, Card, KPI, DataTable, StatusBadge, OCI_STATUS_TONE, EtaCell, Badge, Modal } from '@/components/ui'
 import type { Column } from '@/components/ui'
 import { getImportaciones, createImportacion } from '@/services/importaciones.service'
-import { money, fmtDate } from '@/lib/utils'
-import type { Importacion, EstadoImportacion } from '@/types'
+import { supabase } from '@/lib/supabase'
+import { money, fmtDate, truncate } from '@/lib/utils'
+import type { Importacion, EstadoImportacion, OrdenCompraImportacion, EstadoOCI } from '@/types'
+import { OciDetailModal } from './OciDetailModal'
 
 const ESTADOS: EstadoImportacion[] = [
   'Borrador','OC emitida','Confirmada por proveedor','Pendiente de invoice',
@@ -13,14 +15,70 @@ const ESTADOS: EstadoImportacion[] = [
   'Recibida en almacén','Costeada','Cerrada','Observada','Anulada',
 ]
 
+const OCI_ESTADOS: EstadoOCI[] = [
+  'Borrador','OC emitida','Confirmada por proveedor','Pendiente de invoice',
+  'Invoice recibida','En preparación de embarque','Embarcada','En tránsito',
+  'Arribada','En aduanas','Nacionalizada','En traslado a almacén',
+  'Recibida en almacén','Costeada','Cerrada','Observada','Anulada',
+]
+
 export function ImportacionesList() {
   const navigate = useNavigate()
+
+  // ── View mode ──────────────────────────────────────────────────────────
+  const [viewMode, setViewMode] = useState<'grupos' | 'ocis'>('grupos')
+
+  // ── Grupos state ───────────────────────────────────────────────────────
   const [importaciones, setImportaciones] = useState<Importacion[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const [estado, setEstado] = useState('')
   const [incoterm, setIncoterm] = useState('')
   const [tipoEmbarque, setTipoEmbarque] = useState('')
+
+  // ── OCIs state ─────────────────────────────────────────────────────────
+  const [ociRows, setOciRows] = useState<OrdenCompraImportacion[]>([])
+  const [ociLoading, setOciLoading] = useState(false)
+  const [ociSearch, setOciSearch] = useState('')
+  const [ociFilterEstado, setOciFilterEstado] = useState<EstadoOCI | ''>('')
+
+  const loadOcis = useCallback(async () => {
+    setOciLoading(true)
+    const { data } = await supabase
+      .from('ordenes_compra')
+      .select(`
+        *,
+        proveedor:proveedores(razon_social),
+        importacion:importaciones(id, grupo_importacion),
+        operacion:operaciones(id, correlativo_opci)
+      `)
+      .eq('tipo', 'Importacion')
+      .order('created_at', { ascending: false })
+      .limit(200)
+    setOciRows((data ?? []) as unknown as OrdenCompraImportacion[])
+    setOciLoading(false)
+  }, [])
+
+  useEffect(() => {
+    if (viewMode === 'ocis') loadOcis()
+  }, [viewMode, loadOcis])
+
+  const filteredOcis = useMemo(() => {
+    let rows = ociRows
+    if (ociFilterEstado) rows = rows.filter(r => r.status === ociFilterEstado)
+    if (ociSearch) {
+      const q = ociSearch.toLowerCase()
+      rows = rows.filter(r =>
+        r.num_oc?.toLowerCase().includes(q) ||
+        (r.proveedor as { razon_social?: string } | undefined)?.razon_social?.toLowerCase().includes(q) ||
+        (r.operacion as { correlativo_opci?: string } | undefined)?.correlativo_opci?.toLowerCase().includes(q) ||
+        (r.importacion as { grupo_importacion?: string } | undefined)?.grupo_importacion?.toLowerCase().includes(q),
+      )
+    }
+    return rows
+  }, [ociRows, ociSearch, ociFilterEstado])
+
+  const [selectedOciId, setSelectedOciId] = useState<string | null>(null)
 
   const [showNueva, setShowNueva] = useState(false)
   const [impForm, setImpForm] = useState({ grupo_importacion: '', operador_logistico: '', incoterm: '', tipo_embarque: '', pais_origen: '', pais_embarque: '', ciudad_embarque: '', eta: '', peso_bruto_kg: '', flete_usd: '', observaciones: '' })
@@ -70,6 +128,58 @@ export function ImportacionesList() {
   const etaSemana     = importaciones.filter(i => { const d = i.eta ? Math.ceil((new Date(i.eta).getTime() - Date.now()) / 86400000) : 999; return d >= 0 && d <= 7 }).length
   const pendCosteo    = importaciones.filter(i => ['Recibida en almacén','Nacionalizada'].includes(i.status)).length
 
+  const ociColumns: Column<OrdenCompraImportacion>[] = [
+    {
+      key: 'num_oc', label: 'N° OCI', sortable: true, width: 140,
+      render: r => (
+        <span className="mono" style={{ color: 'var(--accent-2)', fontWeight: 600, cursor: 'pointer' }}
+          onClick={e => { e.stopPropagation(); navigate(`/importaciones/${(r.importacion as { id?: string } | undefined)?.id}?tab=items`) }}>
+          {r.num_oc}
+        </span>
+      ),
+    },
+    {
+      key: 'fecha_oc', label: 'Fecha emisión', sortable: true,
+      render: r => <span className="mono">{r.fecha_oc ?? '—'}</span>,
+    },
+    {
+      key: 'proveedor', label: 'Proveedor',
+      render: r => <span title={(r.proveedor as { razon_social?: string } | undefined)?.razon_social}>{truncate((r.proveedor as { razon_social?: string } | undefined)?.razon_social ?? '—', 28)}</span>,
+    },
+    {
+      key: 'operacion', label: 'OPCI',
+      render: r => {
+        const op = r.operacion as { id?: string; correlativo_opci?: string } | undefined
+        if (!op?.correlativo_opci) return <span className="muted">—</span>
+        return (
+          <button className="btn ghost xs" style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-2)', padding: '0 4px' }}
+            onClick={e => { e.stopPropagation(); navigate(`/operaciones/${op.id}`) }}>
+            {op.correlativo_opci}
+          </button>
+        )
+      },
+    },
+    {
+      key: 'importacion', label: 'Grupo importación',
+      render: r => {
+        const imp = r.importacion as { id?: string; grupo_importacion?: string } | undefined
+        if (!imp?.grupo_importacion) return <span className="muted">—</span>
+        return (
+          <button className="btn ghost xs" style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-2)', padding: '0 4px' }}
+            onClick={e => { e.stopPropagation(); navigate(`/importaciones/${imp.id}`) }}>
+            {imp.grupo_importacion}
+          </button>
+        )
+      },
+    },
+    {
+      key: 'monto_total', label: 'Monto', align: 'right', sortable: true,
+      render: r => <span className="mono">{money(r.monto_total, r.moneda)}</span>,
+    },
+    { key: 'eta', label: 'ETA', render: r => <EtaCell eta={r.eta} /> },
+    { key: 'status', label: 'Estado', render: r => <StatusBadge status={r.status} mapping={OCI_STATUS_TONE} /> },
+  ]
+
   const columns: Column<Importacion>[] = [
     {
       key: 'grupo_importacion', label: 'Grupo', sortable: true,
@@ -110,53 +220,124 @@ export function ImportacionesList() {
         <div>
           <h1 className="page-title">
             Importaciones
-            <span className="tiny" style={{ marginLeft: 8, color: 'var(--text-3)' }}>{importaciones.length} grupos</span>
+            <span className="tiny" style={{ marginLeft: 8, color: 'var(--text-3)' }}>
+              {viewMode === 'grupos' ? `${importaciones.length} grupos` : `${filteredOcis.length} órdenes`}
+            </span>
           </h1>
-          <div className="page-sub">Grupos de importación · cada grupo agrupa varias OCI bajo un mismo trámite aduanal</div>
+          <div className="page-sub">
+            {viewMode === 'grupos'
+              ? 'Grupos de importación · cada grupo agrupa varias OCI bajo un mismo trámite aduanal'
+              : 'Órdenes de compra de importación (OCI) — vista plana'}
+          </div>
         </div>
         <div className="page-actions">
+          <div style={{ display: 'flex', padding: 3, borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', gap: 2 }}>
+            {(['grupos', 'ocis'] as const).map(mode => (
+              <button
+                key={mode}
+                onClick={() => setViewMode(mode)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '5px 14px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                  fontSize: 12.5, fontWeight: 500,
+                  background: viewMode === mode ? 'var(--surface-1)' : 'transparent',
+                  color: viewMode === mode ? 'var(--text-1)' : 'var(--text-3)',
+                  boxShadow: viewMode === mode ? '0 1px 3px rgba(0,0,0,.12), 0 0 0 1px var(--border)' : 'none',
+                  transition: 'background .15s, color .15s, box-shadow .15s',
+                }}
+              >
+                <Icon name={mode === 'grupos' ? 'layers' : 'opci'} size={12} />
+                {mode === 'grupos' ? 'Grupos' : 'Órdenes OCI'}
+              </button>
+            ))}
+          </div>
           <button className="btn primary sm" onClick={() => setShowNueva(true)}><Icon name="plus" size={13} /> Nuevo grupo</button>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
-        <KPI label="En tránsito"          value={enTransito}  delta="embarques activos" icon="ship" />
-        <KPI label="En aduanas"           value={enAduanas}   delta={enAduanas > 0 ? '¡Requiere atención!' : 'Sin pendientes'} deltaTone={enAduanas > 0 ? 'down' : ''} icon="warning" />
-        <KPI label="ETA esta semana"      value={etaSemana}   delta="próximos 7 días" icon="clock" />
-        <KPI label="Pendientes de costeo" value={pendCosteo}  delta="sin costo asignado" deltaTone={pendCosteo > 0 ? 'down' : ''} icon="coin" />
-      </div>
-
-      <Card padding={false}>
-        <div className="table-toolbar">
-          <div className="input-wrap">
-            <Icon name="search" size={13} className="ico" />
-            <input className="input with-ico" placeholder="Grupo, operador, país…" value={q}
-              onChange={e => setQ(e.target.value)} style={{ width: 240 }} />
+      {viewMode === 'grupos' && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+            <KPI label="En tránsito"          value={enTransito}  delta="embarques activos" icon="ship" />
+            <KPI label="En aduanas"           value={enAduanas}   delta={enAduanas > 0 ? '¡Requiere atención!' : 'Sin pendientes'} deltaTone={enAduanas > 0 ? 'down' : ''} icon="warning" />
+            <KPI label="ETA esta semana"      value={etaSemana}   delta="próximos 7 días" icon="clock" />
+            <KPI label="Pendientes de costeo" value={pendCosteo}  delta="sin costo asignado" deltaTone={pendCosteo > 0 ? 'down' : ''} icon="coin" />
           </div>
-          <select className="select" value={estado} onChange={e => setEstado(e.target.value)}>
-            <option value="">Todos los estados</option>
-            {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <select className="select" value={incoterm} onChange={e => setIncoterm(e.target.value)}>
-            <option value="">Todos los Incoterms</option>
-            {['FOB','CIF','CFR','FCA','EXW','DAP','DDP'].map(i => <option key={i} value={i}>{i}</option>)}
-          </select>
-          <select className="select" value={tipoEmbarque} onChange={e => setTipoEmbarque(e.target.value)}>
-            <option value="">Todos los embarques</option>
-            {['Marítimo FCL','Marítimo LCL','Aéreo','Terrestre','Courier'].map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <div className="spacer" />
-          <button className="btn sm"><Icon name="download" size={13} /> Exportar</button>
+
+          <Card padding={false}>
+            <div className="table-toolbar">
+              <div className="input-wrap">
+                <Icon name="search" size={13} className="ico" />
+                <input className="input with-ico" placeholder="Grupo, operador, país…" value={q}
+                  onChange={e => setQ(e.target.value)} style={{ width: 240 }} />
+              </div>
+              <select className="select" value={estado} onChange={e => setEstado(e.target.value)}>
+                <option value="">Todos los estados</option>
+                {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <select className="select" value={incoterm} onChange={e => setIncoterm(e.target.value)}>
+                <option value="">Todos los Incoterms</option>
+                {['FOB','CIF','CFR','FCA','EXW','DAP','DDP'].map(i => <option key={i} value={i}>{i}</option>)}
+              </select>
+              <select className="select" value={tipoEmbarque} onChange={e => setTipoEmbarque(e.target.value)}>
+                <option value="">Todos los embarques</option>
+                {['Marítimo FCL','Marítimo LCL','Aéreo','Terrestre','Courier'].map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <div className="spacer" />
+              <button className="btn sm"><Icon name="download" size={13} /> Exportar</button>
+            </div>
+            <DataTable
+              columns={columns as unknown as Column<Record<string, unknown>>[]}
+              rows={importaciones as unknown as Record<string, unknown>[]}
+              idKey="id"
+              loading={loading}
+              onRowClick={r => navigate(`/importaciones/${(r as unknown as Importacion).id}`)}
+              emptyMessage="No hay importaciones que coincidan"
+            />
+          </Card>
+        </>
+      )}
+
+      {viewMode === 'ocis' && (
+        <div className="card" style={{ overflow: 'hidden' }}>
+          <div className="table-toolbar">
+            <div className="input-wrap" style={{ flex: '1 1 260px', maxWidth: 340 }}>
+              <Icon name="search" size={13} style={{ color: 'var(--text-3)' }} />
+              <input
+                className="input with-ico"
+                placeholder="N° OCI, proveedor, OPCI, grupo…"
+                value={ociSearch}
+                onChange={e => setOciSearch(e.target.value)}
+              />
+            </div>
+            <select
+              className="select"
+              value={ociFilterEstado}
+              onChange={e => setOciFilterEstado(e.target.value as EstadoOCI | '')}
+              style={{ flex: '0 0 200px' }}
+            >
+              <option value="">Todos los estados</option>
+              {OCI_ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="card-body no-pad">
+            <DataTable
+              columns={ociColumns as unknown as Column<Record<string, unknown>>[]}
+              rows={filteredOcis as unknown as Record<string, unknown>[]}
+              idKey="id"
+              loading={ociLoading}
+              onRowClick={r => setSelectedOciId((r as unknown as OrdenCompraImportacion).id)}
+              emptyMessage="No se encontraron órdenes OCI"
+            />
+          </div>
         </div>
-        <DataTable
-          columns={columns as unknown as Column<Record<string, unknown>>[]}
-          rows={importaciones as unknown as Record<string, unknown>[]}
-          idKey="id"
-          loading={loading}
-          onRowClick={r => navigate(`/importaciones/${(r as unknown as Importacion).id}`)}
-          emptyMessage="No hay importaciones que coincidan"
-        />
-      </Card>
+      )}
+      <OciDetailModal
+        ociId={selectedOciId}
+        onClose={() => setSelectedOciId(null)}
+        onChanged={loadOcis}
+      />
+
       <Modal open={showNueva} onClose={() => setShowNueva(false)} title="Nuevo grupo de importación" size="lg"
         footer={
           <>

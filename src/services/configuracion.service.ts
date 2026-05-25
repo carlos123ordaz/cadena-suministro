@@ -5,7 +5,7 @@ export async function getAppConfig(clave: string): Promise<string | null> {
     .from('app_configuracion')
     .select('valor')
     .eq('clave', clave)
-    .single()
+    .maybeSingle()
   return (data as { valor: string } | null)?.valor ?? null
 }
 

@@ -8,9 +8,10 @@ interface CardProps {
   padding?: boolean
   className?: string
   style?: React.CSSProperties
+  bodyStyle?: React.CSSProperties
 }
 
-export function Card({ title, icon, actions, children, padding = true, className, style }: CardProps) {
+export function Card({ title, icon, actions, children, padding = true, className, style, bodyStyle }: CardProps) {
   return (
     <div className={`card${className ? ' ' + className : ''}`} style={style}>
       {title && (
@@ -22,7 +23,7 @@ export function Card({ title, icon, actions, children, padding = true, className
           {actions && <div>{actions}</div>}
         </div>
       )}
-      <div className={padding ? 'card-body' : 'card-body no-pad'}>
+      <div className={padding ? 'card-body' : 'card-body no-pad'} style={bodyStyle}>
         {children}
       </div>
     </div>

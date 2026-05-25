@@ -179,16 +179,26 @@ export function Almacen() {
   useEffect(() => {
     if (despProdSearch.length > 0 && despProdSearch.length < 2) { setDespProdSugeridos([]); return }
     if (despProdSearch.length === 0) return
+    const opId = despForm.operacion_id
     const t = setTimeout(async () => {
-      const { data } = await supabase.from('productos')
-        .select('id, codigo_comercial, descripcion, unidad_medida')
-        .or(`codigo_comercial.ilike.%${despProdSearch}%,descripcion.ilike.%${despProdSearch}%`)
-        .eq('activo', true).eq('tipo', 'Producto').limit(20)
-      setDespProdSugeridos((data ?? []) as { id: string; codigo_comercial: string; descripcion: string; unidad_medida: string }[])
+      if (opId) {
+        const { data } = await supabase.from('operacion_items')
+          .select('id, codigo_comercial, descripcion, unidad_medida')
+          .eq('operacion_id', opId)
+          .or(`codigo_comercial.ilike.%${despProdSearch}%,descripcion.ilike.%${despProdSearch}%`)
+          .limit(20)
+        setDespProdSugeridos((data ?? []) as { id: string; codigo_comercial: string; descripcion: string; unidad_medida: string }[])
+      } else {
+        const { data } = await supabase.from('productos')
+          .select('id, codigo_comercial, descripcion, unidad_medida')
+          .or(`codigo_comercial.ilike.%${despProdSearch}%,descripcion.ilike.%${despProdSearch}%`)
+          .eq('activo', true).eq('tipo', 'Producto').limit(20)
+        setDespProdSugeridos((data ?? []) as { id: string; codigo_comercial: string; descripcion: string; unidad_medida: string }[])
+      }
       setShowDespProdDrop(true)
     }, 250)
     return () => clearTimeout(t)
-  }, [despProdSearch])
+  }, [despProdSearch, despForm.operacion_id])
 
   // ── Despacho: OPCI search ─────────────────────────────────────────────
   useEffect(() => {
@@ -219,10 +229,18 @@ export function Almacen() {
   async function handleDespProdFocus() {
     setShowDespProdDrop(true)
     if (!despProdSearch) {
-      const { data } = await supabase.from('productos')
-        .select('id, codigo_comercial, descripcion, unidad_medida')
-        .eq('activo', true).eq('tipo', 'Producto').order('codigo_comercial').limit(20)
-      setDespProdSugeridos((data ?? []) as { id: string; codigo_comercial: string; descripcion: string; unidad_medida: string }[])
+      if (despForm.operacion_id) {
+        const { data } = await supabase.from('operacion_items')
+          .select('id, codigo_comercial, descripcion, unidad_medida')
+          .eq('operacion_id', despForm.operacion_id)
+          .order('item_op').limit(50)
+        setDespProdSugeridos((data ?? []) as { id: string; codigo_comercial: string; descripcion: string; unidad_medida: string }[])
+      } else {
+        const { data } = await supabase.from('productos')
+          .select('id, codigo_comercial, descripcion, unidad_medida')
+          .eq('activo', true).eq('tipo', 'Producto').order('codigo_comercial').limit(20)
+        setDespProdSugeridos((data ?? []) as { id: string; codigo_comercial: string; descripcion: string; unidad_medida: string }[])
+      }
     }
   }
 
@@ -729,7 +747,7 @@ export function Almacen() {
         footer={
           <>
             <button className="btn" onClick={() => { setShowDesp(false); resetDesp() }}>Cancelar</button>
-            <button className="btn primary" onClick={handleRegistrarDespacho} disabled={savingDesp || !despForm.almacen_id || !despForm.codigo_comercial || !despForm.cantidad}>
+            <button className="btn primary" onClick={handleRegistrarDespacho} disabled={savingDesp || !despForm.almacen_id || !despForm.operacion_id || !despForm.codigo_comercial || !despForm.cantidad}>
               {savingDesp ? 'Guardando…' : 'Registrar despacho'}
             </button>
           </>
@@ -748,12 +766,19 @@ export function Almacen() {
 
           {/* OPCI search */}
           <div className="form-field" style={{ gridColumn: '1 / -1' }}>
-            <label className="form-label">OPCI (opcional)</label>
+            <label className="form-label">OPCI *</label>
             <div style={{ position: 'relative' }} ref={despOpciDropRef}>
               <input
                 className="input"
                 value={despOpciSearch}
-                onChange={e => { setDespOpciSearch(e.target.value); if (!e.target.value) setDespForm(d => ({ ...d, operacion_id: '' })) }}
+                onChange={e => {
+                setDespOpciSearch(e.target.value)
+                if (!e.target.value) {
+                  setDespForm(d => ({ ...d, operacion_id: '', codigo_comercial: '', descripcion: '', unidad_medida: 'UND' }))
+                  setDespProdSearch('')
+                  setDespProdSugeridos([])
+                }
+              }}
                 onFocus={handleDespOpciFocus}
                 placeholder="Buscar OPCI…"
                 style={{ width: '100%' }}
@@ -762,7 +787,13 @@ export function Almacen() {
                 <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', maxHeight: 180, overflowY: 'auto' }}>
                   {despOpciSugeridas.map(o => (
                     <div key={o.id} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5 }}
-                      onMouseDown={() => { setDespOpciSearch(o.correlativo_opci); setDespForm(d => ({ ...d, operacion_id: o.id })); setShowDespOpciDrop(false) }}
+                      onMouseDown={() => {
+                      setDespOpciSearch(o.correlativo_opci)
+                      setDespForm(d => ({ ...d, operacion_id: o.id, codigo_comercial: '', descripcion: '', unidad_medida: 'UND' }))
+                      setDespProdSearch('')
+                      setDespProdSugeridos([])
+                      setShowDespOpciDrop(false)
+                    }}
                       onMouseEnter={e => (e.currentTarget.style.background = 'var(--panel-2)')}
                       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                       <span className="mono" style={{ color: 'var(--accent)', fontWeight: 600 }}>{o.correlativo_opci}</span>
@@ -775,13 +806,20 @@ export function Almacen() {
 
           {/* Product search */}
           <div className="form-field" style={{ gridColumn: '1 / -1', position: 'relative' }} ref={despProdDropRef}>
-            <label className="form-label">Producto *</label>
+            <label className="form-label">
+              Producto *
+              {despForm.operacion_id && (
+                <span style={{ fontWeight: 400, color: 'var(--accent)', marginLeft: 8, fontSize: 11 }}>
+                  — ítems de la OPCI seleccionada
+                </span>
+              )}
+            </label>
             <input
               className="input"
               value={despProdSearch}
               onChange={e => { setDespProdSearch(e.target.value); setShowDespProdDrop(true); if (!e.target.value) setDespForm(d => ({ ...d, codigo_comercial: '', descripcion: '', unidad_medida: 'UND' })) }}
               onFocus={handleDespProdFocus}
-              placeholder="Código comercial o descripción…"
+              placeholder={despForm.operacion_id ? 'Buscar ítem de la OPCI…' : 'Código comercial o descripción…'}
               style={{ width: '100%', fontFamily: 'var(--font-mono)' }}
             />
             {showDespProdDrop && despProdSugeridos.length > 0 && (

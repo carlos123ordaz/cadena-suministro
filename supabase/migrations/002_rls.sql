@@ -39,6 +39,7 @@ ALTER TABLE public.pagos_factura              ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.operacion_item_notas       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ordenes_compra_notas       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.app_configuracion          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.parametros_lista           ENABLE ROW LEVEL SECURITY;
 
 -- ---------------------------------------------------------------------------
 -- app_configuracion
@@ -47,6 +48,20 @@ CREATE POLICY "app_config_select"
   ON public.app_configuracion FOR SELECT
   TO authenticated
   USING (TRUE);
+
+-- ---------------------------------------------------------------------------
+-- parametros_lista
+-- ---------------------------------------------------------------------------
+CREATE POLICY "parametros_lista_select"
+  ON public.parametros_lista FOR SELECT
+  TO authenticated
+  USING (TRUE);
+
+CREATE POLICY "parametros_lista_all"
+  ON public.parametros_lista FOR ALL
+  TO authenticated
+  USING (get_user_rol() = 'Administrador')
+  WITH CHECK (get_user_rol() = 'Administrador');
 
 CREATE POLICY "app_config_write_admin"
   ON public.app_configuracion FOR ALL

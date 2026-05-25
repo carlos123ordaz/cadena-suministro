@@ -15,7 +15,7 @@ import { useAuth } from '@/context/AuthContext'
 import { fmtDate, money, truncate } from '@/lib/utils'
 import type {
   OrdenCompraLocal, OrdenCompraLocalItem, ProveedorFechaHistorial,
-  EstadoOCL, Producto, OrdenCompraNota, OperacionItem,
+  EstadoOCL, OrdenCompraNota, OperacionItem,
 } from '@/types'
 
 const OCL_STATES: EstadoOCL[] = [
@@ -52,10 +52,6 @@ export function ComprasLocalesDetail() {
   const [addItemSaving, setAddItemSaving] = useState(false)
   const [addItemError, setAddItemError] = useState<string | null>(null)
   const [addItemForm, setAddItemForm] = useState({ item_oc: '', producto_id: '', codigo_comercial: '', descripcion: '', cantidad: '', unidad_medida: '', moneda: 'USD', pcu1: '', operacion_item_id: '', opci_id: '' })
-  const [productosSearch, setProductosSearch] = useState('')
-  const [productosSugeridos, setProductosSugeridos] = useState<Producto[]>([])
-  const [showProductosDrop, setShowProductosDrop] = useState(false)
-  const productoDropRef = useRef<HTMLDivElement>(null)
   const [opciItems, setOpciItems] = useState<OperacionItem[]>([])
   const [opciSearch, setOpciSearch] = useState('')
   const [opciSugeridas, setOpciSugeridas] = useState<{ id: string; correlativo_opci: string }[]>([])
@@ -90,36 +86,6 @@ export function ComprasLocalesDetail() {
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
-    if (productosSearch.length > 0 && productosSearch.length < 2) { setProductosSugeridos([]); return }
-    if (productosSearch.length === 0) return
-    const t = setTimeout(async () => {
-      const { data } = await supabase
-        .from('productos')
-        .select('id, codigo_comercial, descripcion, unidad_medida')
-        .or(`codigo_comercial.ilike.%${productosSearch}%,descripcion.ilike.%${productosSearch}%`)
-        .eq('activo', true)
-        .eq('tipo', 'Producto')
-        .limit(20)
-      setProductosSugeridos((data ?? []) as Producto[])
-    }, 250)
-    return () => clearTimeout(t)
-  }, [productosSearch])
-
-  async function handleProductoFocus() {
-    setShowProductosDrop(true)
-    if (!productosSearch) {
-      const { data } = await supabase
-        .from('productos')
-        .select('id, codigo_comercial, descripcion, unidad_medida')
-        .eq('activo', true)
-        .eq('tipo', 'Producto')
-        .order('codigo_comercial')
-        .limit(20)
-      setProductosSugeridos((data ?? []) as Producto[])
-    }
-  }
-
-  useEffect(() => {
     if (opciSearch.length > 0 && opciSearch.length < 2) { setOpciSugeridas([]); return }
     if (opciSearch.length === 0) return
     const t = setTimeout(async () => {
@@ -137,7 +103,6 @@ export function ComprasLocalesDetail() {
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (productoDropRef.current && !productoDropRef.current.contains(e.target as Node)) setShowProductosDrop(false)
       if (opciDropRef.current && !opciDropRef.current.contains(e.target as Node)) setShowOpciDrop(false)
     }
     document.addEventListener('mousedown', handleClick)
@@ -156,17 +121,6 @@ export function ComprasLocalesDetail() {
     }
   }
 
-  function selectProducto(p: Producto) {
-    setAddItemForm(f => ({
-      ...f,
-      producto_id: p.id,
-      codigo_comercial: p.codigo_comercial,
-      descripcion: p.descripcion,
-      unidad_medida: p.unidad_medida ?? f.unidad_medida,
-    }))
-    setProductosSearch(p.codigo_comercial)
-    setShowProductosDrop(false)
-  }
 
   async function handleAddItem() {
     if (!id || !addItemForm.cantidad || !addItemForm.pcu1) {
@@ -197,7 +151,6 @@ export function ComprasLocalesDetail() {
     if (error) { setAddItemError((error as Error).message ?? 'Error al guardar.'); return }
     setShowAddItem(false)
     setAddItemForm({ item_oc: '', producto_id: '', codigo_comercial: '', descripcion: '', cantidad: '', unidad_medida: '', moneda: 'USD', pcu1: '', operacion_item_id: '', opci_id: '' })
-    setProductosSearch('')
     load()
   }
 
@@ -384,7 +337,7 @@ export function ComprasLocalesDetail() {
       </div>
 
       {/* Modal: Agregar ítem */}
-      <Modal open={showAddItem} onClose={() => { setShowAddItem(false); setProductosSearch(''); setProductosSugeridos([]); setOpciSearch(''); setOpciSugeridas([]) }}
+      <Modal open={showAddItem} onClose={() => { setShowAddItem(false); setOpciSearch(''); setOpciSugeridas([]) }}
         title="Agregar ítem a la OC" size="md"
         footer={
           <>
@@ -455,7 +408,6 @@ export function ComprasLocalesDetail() {
                         producto_id: sel.producto_id ?? '',
                       } : {}),
                     }))
-                    if (sel?.codigo_comercial) setProductosSearch(sel.codigo_comercial)
                   }}
                   style={{ flex: 1 }}
                 >
@@ -467,33 +419,11 @@ export function ComprasLocalesDetail() {
               )}
             </div>
           </div>
-          {/* Búsqueda de producto */}
-          <div className="form-field" style={{ gridColumn: '1 / -1', position: 'relative' }} ref={productoDropRef}>
-            <label className="form-label">Buscar producto por código comercial *</label>
-            <input
-              className="input"
-              value={productosSearch}
-              onChange={e => { setProductosSearch(e.target.value); setShowProductosDrop(true) }}
-              onFocus={handleProductoFocus}
-              placeholder="Escribe código comercial o descripción…"
-              style={{ width: '100%', fontFamily: 'var(--font-mono)' }}
-            />
-            {showProductosDrop && productosSugeridos.length > 0 && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: 'var(--shadow-md)', maxHeight: 200, overflowY: 'auto' }}>
-                {productosSugeridos.map(p => (
-                  <div key={p.id} style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid var(--border-soft)' }} onMouseDown={() => selectProducto(p)}>
-                    <span className="mono" style={{ color: 'var(--accent-2)', marginRight: 8 }}>{p.codigo_comercial}</span>
-                    <span style={{ fontSize: 12 }}>{truncate(p.descripcion, 40)}</span>
-                    <Badge tone="muted" style={{ marginLeft: 8, fontSize: 10 }}>{p.unidad_medida}</Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
           {addItemForm.descripcion && (
-            <div style={{ gridColumn: '1 / -1', padding: '6px 10px', background: 'var(--accent-soft)', borderRadius: 6, fontSize: 12 }}>
-              <span className="muted">Descripción: </span><strong>{addItemForm.descripcion}</strong>
+            <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', background: 'var(--accent-soft)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12.5 }}>
+              {addItemForm.codigo_comercial && <span className="mono" style={{ color: 'var(--accent-2)', fontWeight: 600, flexShrink: 0 }}>{addItemForm.codigo_comercial}</span>}
+              {addItemForm.codigo_comercial && <span style={{ color: 'var(--border)' }}>·</span>}
+              <span style={{ color: 'var(--text-1)' }}>{addItemForm.descripcion}</span>
             </div>
           )}
 

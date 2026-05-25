@@ -9,6 +9,16 @@ import type {
   PaginationParams,
 } from '@/types'
 
+export async function getParametrosLista(tipo: string): Promise<string[]> {
+  const { data } = await supabase
+    .from('parametros_lista')
+    .select('valor')
+    .eq('tipo', tipo)
+    .eq('activo', true)
+    .order('orden')
+  return (data ?? []).map((r: { valor: string }) => r.valor)
+}
+
 interface CostoUnitarioResult {
   orden_compra_id: UUID
   item_oc: string

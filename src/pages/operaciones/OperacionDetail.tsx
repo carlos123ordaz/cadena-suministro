@@ -162,11 +162,29 @@ export function OperacionDetail() {
       unidad_medida: p.unidad_medida ?? f.unidad_medida,
     }))
     setProductosSearch(p.codigo_comercial)
+    setProductosSugeridos([])
     setShowProductosDrop(false)
   }
 
+  function clearProducto() {
+    setItemForm(f => ({ ...f, producto_id: '', codigo_comercial: '', descripcion: '' }))
+    setProductosSearch('')
+    setProductosSugeridos([])
+  }
+
+  async function handleProductoFocus() {
+    const { data } = await supabase
+      .from('productos')
+      .select('id, codigo_comercial, descripcion, unidad_medida, marca')
+      .eq('activo', true)
+      .order('codigo_comercial')
+      .limit(20)
+    setProductosSugeridos((data ?? []) as Producto[])
+    setShowProductosDrop(true)
+  }
+
   async function handleAddItem() {
-    if (!itemForm.descripcion.trim()) { setItemError('La descripción es obligatoria.'); return }
+    if (!itemForm.descripcion.trim()) { setItemError('Selecciona un producto o escribe una descripción.'); return }
     if (!itemForm.cantidad || parseFloat(itemForm.cantidad) <= 0) { setItemError('La cantidad debe ser mayor a 0.'); return }
     if (!itemForm.precio_unitario || parseFloat(itemForm.precio_unitario) < 0) { setItemError('El precio unitario es requerido.'); return }
     setItemError(null)
@@ -611,17 +629,45 @@ export function OperacionDetail() {
         )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
 
-          {/* Búsqueda de producto */}
+          {/* Producto unificado */}
           <div className="form-field" style={{ gridColumn: '1 / -1', position: 'relative' }} ref={productoDropRef}>
-            <label className="form-label">Buscar producto (código o descripción)</label>
-            <input
-              className="input"
-              value={productosSearch}
-              onChange={e => { setProductosSearch(e.target.value); setShowProductosDrop(true) }}
-              onFocus={() => setShowProductosDrop(true)}
-              placeholder="Escribe código comercial o descripción…"
-              style={{ width: '100%' }}
-            />
+            <label className="form-label">Producto *</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                className="input"
+                value={productosSearch}
+                onChange={e => {
+                  const val = e.target.value
+                  setProductosSearch(val)
+                  setShowProductosDrop(!!val)
+                  if (itemForm.producto_id) {
+                    setItemForm(f => ({ ...f, producto_id: '', codigo_comercial: '', descripcion: val }))
+                  } else {
+                    setItemForm(f => ({ ...f, descripcion: val }))
+                  }
+                }}
+                onFocus={handleProductoFocus}
+                placeholder="Busca por código o descripción, o escribe descripción libre…"
+                style={{ width: '100%', paddingRight: itemForm.producto_id ? 36 : undefined }}
+              />
+              {itemForm.producto_id && (
+                <button
+                  type="button"
+                  className="btn ghost xs"
+                  style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
+                  onMouseDown={e => { e.preventDefault(); clearProducto() }}
+                >
+                  <Icon name="x" size={11} />
+                </button>
+              )}
+            </div>
+            {itemForm.producto_id && (
+              <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', background: 'var(--accent-soft)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12.5 }}>
+                <span className="mono" style={{ color: 'var(--accent-2)', fontWeight: 600, flexShrink: 0 }}>{itemForm.codigo_comercial}</span>
+                <span style={{ color: 'var(--border)' }}>·</span>
+                <span style={{ color: 'var(--text-1)', flex: 1, lineHeight: 1.4 }}>{itemForm.descripcion}</span>
+              </div>
+            )}
             {showProductosDrop && productosSugeridos.length > 0 && (
               <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: 'var(--shadow-md)', maxHeight: 220, overflowY: 'auto' }}>
                 {productosSugeridos.map(p => (
@@ -629,8 +675,10 @@ export function OperacionDetail() {
                     key={p.id}
                     style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid var(--border-soft)' }}
                     onMouseDown={() => selectProducto(p)}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--panel-2)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = '')}
                   >
-                    <span className="mono" style={{ color: 'var(--accent-2)', marginRight: 8 }}>{p.codigo_comercial}</span>
+                    <span className="mono" style={{ color: 'var(--accent-2)', marginRight: 8, fontWeight: 600 }}>{p.codigo_comercial}</span>
                     <span style={{ fontSize: 12 }}>{p.descripcion}</span>
                     {p.marca && <span className="tiny muted" style={{ marginLeft: 8 }}>{p.marca}</span>}
                     <Badge tone="muted" style={{ marginLeft: 8, fontSize: 10 }}>{p.unidad_medida}</Badge>
@@ -646,22 +694,10 @@ export function OperacionDetail() {
             <input className="input" value={itemForm.item_op} onChange={e => setItemForm(f => ({ ...f, item_op: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} placeholder="1, 2, 3…" />
           </div>
 
-          {/* Código comercial */}
-          <div className="form-field">
-            <label className="form-label">Código comercial</label>
-            <input className="input" value={itemForm.codigo_comercial} onChange={e => setItemForm(f => ({ ...f, codigo_comercial: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} placeholder="SKU" />
-          </div>
-
           {/* Código cliente */}
           <div className="form-field">
             <label className="form-label">Código cliente</label>
             <input className="input" value={itemForm.codigo_cliente} onChange={e => setItemForm(f => ({ ...f, codigo_cliente: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} />
-          </div>
-
-          {/* Descripción */}
-          <div className="form-field" style={{ gridColumn: '1 / -1' }}>
-            <label className="form-label">Descripción *</label>
-            <input className="input" value={itemForm.descripcion} onChange={e => setItemForm(f => ({ ...f, descripcion: e.target.value }))} style={{ width: '100%' }} placeholder="Descripción del producto o servicio" />
           </div>
 
           {/* Cantidad */}
@@ -673,10 +709,10 @@ export function OperacionDetail() {
           {/* Unidad de medida */}
           <div className="form-field">
             <label className="form-label">Unidad de medida</label>
-            <select className="select" value={itemForm.unidad_medida} onChange={e => setItemForm(f => ({ ...f, unidad_medida: e.target.value }))} style={{ width: '100%' }}>
-              <option value="">— Sin especificar —</option>
-              {UNIDADES_MEDIDA.map(u => <option key={u} value={u}>{u}</option>)}
-            </select>
+            <input list="um-list" className="input" value={itemForm.unidad_medida} onChange={e => setItemForm(f => ({ ...f, unidad_medida: e.target.value }))} style={{ width: '100%' }} placeholder="UND, KG, M2…" />
+            <datalist id="um-list">
+              {UNIDADES_MEDIDA.map(u => <option key={u} value={u} />)}
+            </datalist>
           </div>
 
           {/* Moneda */}
@@ -699,15 +735,19 @@ export function OperacionDetail() {
             <input type="number" className="input" value={itemForm.tc_usd} onChange={e => setItemForm(f => ({ ...f, tc_usd: e.target.value }))} style={{ width: '100%' }} step="0.001" min="0" placeholder="Ej: 3.85" />
           </div>
 
-          {/* Total preview */}
-          {itemForm.cantidad && itemForm.precio_unitario && (
-            <div style={{ display: 'flex', alignItems: 'center', background: 'var(--panel-2)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 12px', fontSize: 12.5 }}>
-              <span className="muted" style={{ marginRight: 6 }}>Total:</span>
-              <span className="mono" style={{ fontWeight: 600 }}>
-                {(parseFloat(itemForm.cantidad || '0') * parseFloat(itemForm.precio_unitario || '0')).toLocaleString('es-PE', { minimumFractionDigits: 2 })} {itemForm.moneda}
-              </span>
+          {/* Total preview — siempre ocupa la celda para estabilizar el grid */}
+          <div className="form-field">
+            <label className="form-label">Total</label>
+            <div style={{ display: 'flex', alignItems: 'center', height: 34, background: 'var(--panel-2)', border: '1px solid var(--border)', borderRadius: 6, padding: '0 12px', fontSize: 12.5 }}>
+              {itemForm.cantidad && itemForm.precio_unitario ? (
+                <span className="mono" style={{ fontWeight: 600, color: 'var(--accent-2)' }}>
+                  {(parseFloat(itemForm.cantidad || '0') * parseFloat(itemForm.precio_unitario || '0')).toLocaleString('es-PE', { minimumFractionDigits: 2 })} {itemForm.moneda}
+                </span>
+              ) : (
+                <span style={{ color: 'var(--text-3)' }}>—</span>
+              )}
             </div>
-          )}
+          </div>
 
           {/* Tipo de negocio */}
           <div className="form-field">
@@ -752,10 +792,11 @@ export function OperacionDetail() {
           </div>
 
           {/* Requiere armado */}
-          <div className="form-field" style={{ display: 'flex', alignItems: 'flex-end' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', height: 32 }}>
+          <div className="form-field">
+            <label className="form-label">Requiere armado</label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', height: 34, padding: '0 10px', background: 'var(--panel-2)', border: '1px solid var(--border)', borderRadius: 6 }}>
               <input type="checkbox" checked={itemForm.requiere_armado} onChange={e => setItemForm(f => ({ ...f, requiere_armado: e.target.checked }))} />
-              <span className="form-label" style={{ margin: 0 }}>Requiere armado</span>
+              <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>Sí, requiere armado</span>
             </label>
           </div>
 
