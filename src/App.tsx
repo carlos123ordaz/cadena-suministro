@@ -24,6 +24,7 @@ const Proveedores = lazy(() => import('@/pages/proveedores/Proveedores').then(m 
 const Productos = lazy(() => import('@/pages/productos/Productos').then(m => ({ default: m.Productos })))
 const Reportes = lazy(() => import('@/pages/reportes/Reportes').then(m => ({ default: m.Reportes })))
 const Configuracion = lazy(() => import('@/pages/Configuracion').then(m => ({ default: m.Configuracion })))
+const Manual = lazy(() => import('@/pages/manual/Manual').then(m => ({ default: m.Manual })))
 
 function PageLoader() {
   return (
@@ -79,6 +80,7 @@ function AppShell() {
             <Route path="/productos" element={<Productos />} />
             <Route path="/reportes" element={<Reportes />} />
             <Route path="/configuracion" element={<Configuracion />} />
+            <Route path="/manual" element={<Manual />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </Suspense>

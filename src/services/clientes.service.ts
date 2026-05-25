@@ -3,7 +3,7 @@ import type { UUID, Cliente } from '@/types'
 
 export async function getClientes(search?: string): Promise<{ data: Cliente[] | null; error: unknown }> {
   let query = supabase.from('clientes').select('*').eq('activo', true).order('razon_social', { ascending: true })
-  if (search) query = query.ilike('razon_social', `%${search}%`)
+  if (search) query = query.or(`razon_social.ilike.%${search}%,ruc.ilike.%${search}%`)
   const { data, error } = await query
   return { data: data as Cliente[] | null, error }
 }

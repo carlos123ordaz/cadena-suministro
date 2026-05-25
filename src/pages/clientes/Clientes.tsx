@@ -39,8 +39,6 @@ export function Clientes() {
     load()
   }
 
-  const filtered = clientes.filter(c => !q || c.razon_social.toLowerCase().includes(q.toLowerCase()) || (c.ruc ?? '').includes(q))
-
   const columns: Column<Cliente>[] = [
     { key: 'ruc',           label: 'RUC', render: r => <span className="mono">{r.ruc ?? '—'}</span> },
     { key: 'razon_social',  label: 'Razón social', render: r => <strong style={{ fontSize: 12.5 }}>{r.razon_social}</strong> },
@@ -61,7 +59,7 @@ export function Clientes() {
     <div className="page">
       <div className="page-head">
         <div>
-          <h1 className="page-title">Clientes <span className="tiny" style={{ marginLeft: 8, color: 'var(--text-3)' }}>{filtered.length}</span></h1>
+          <h1 className="page-title">Clientes <span className="tiny" style={{ marginLeft: 8, color: 'var(--text-3)' }}>{clientes.length}</span></h1>
           <div className="page-sub">Directorio de clientes · maestro de datos</div>
         </div>
         <div className="page-actions">
@@ -77,7 +75,7 @@ export function Clientes() {
           <div className="spacer" />
           <button className="btn sm"><Icon name="download" size={13} /> Exportar</button>
         </div>
-        <DataTable columns={columns as unknown as Column<Record<string, unknown>>[]} rows={filtered as unknown as Record<string, unknown>[]} idKey="id" loading={loading} onRowClick={r => setSelected(r as unknown as Cliente)} emptyMessage="Sin clientes registrados" />
+        <DataTable columns={columns as unknown as Column<Record<string, unknown>>[]} rows={clientes as unknown as Record<string, unknown>[]} idKey="id" loading={loading} onRowClick={r => setSelected(r as unknown as Cliente)} emptyMessage="Sin clientes registrados" />
       </Card>
 
       <Drawer open={!!selected && !showModal} onClose={() => setSelected(null)} title={selected?.razon_social ?? ''} sub={selected?.ruc ?? ''}

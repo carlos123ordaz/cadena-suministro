@@ -27,6 +27,7 @@ export interface Profile {
   iniciales: string
   avatar_url?: string
   rol: RolNombre
+  es_vendedor: boolean
   activo: boolean
   created_at: ISOTimestamp
   updated_at: ISOTimestamp
@@ -70,10 +71,16 @@ export interface Proveedor {
 
 // ─── Productos ────────────────────────────────────────────────────
 
+export type TipoProducto = 'Producto' | 'Servicio' | 'Proyecto'
+
 export interface Producto {
   id: UUID
   codigo_comercial: string
   descripcion: string
+  tipo: TipoProducto
+  clase?: string
+  subclase?: string
+  subsubclase?: string
   unidad_medida: string
   marca?: string
   codigo_erp?: string
@@ -202,7 +209,7 @@ export type EstadoOCL =
 
 export interface OrdenCompraLocal {
   id: UUID
-  operacion_id: UUID
+  operacion_id?: UUID
   operacion?: Operacion
   proveedor_id: UUID
   proveedor?: Proveedor
@@ -290,7 +297,7 @@ export type EstadoOCI =
 
 export interface OrdenCompraImportacion {
   id: UUID
-  operacion_id: UUID
+  operacion_id?: UUID
   operacion?: Operacion
   importacion_id?: UUID
   importacion?: Importacion
@@ -561,7 +568,7 @@ export type EstadoGuia = 'Emitida' | 'En transporte' | 'Entregada' | 'Anulada'
 
 export interface GuiaRemision {
   id: UUID
-  operacion_id: UUID
+  operacion_id?: UUID
   despacho_id?: UUID
   numero_guia: string
   fecha_emision?: ISODate

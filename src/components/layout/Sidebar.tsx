@@ -17,6 +17,7 @@ const NAV: NavGroup[] = [
     group: 'General',
     items: [
       { path: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
+      { path: '/manual',    label: 'Manual de uso', icon: 'doc' },
     ],
   },
   {

@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Icon, Card, KPI, DataTable, StatusBadge, FACTURA_STATUS_TONE, EtaCell, Modal, Drawer, MetaGrid, Badge, UploadDocumentoModal } from '@/components/ui'
 import type { Column } from '@/components/ui'
-import { getFacturas, getFactura, registrarPago, createFactura } from '@/services/facturacion.service'
+import { getFacturas, getFactura, registrarPago, createFactura, cambiarEstadoFactura } from '@/services/facturacion.service'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { money, fmtDate, daysFrom } from '@/lib/utils'
@@ -19,6 +20,7 @@ const defaultPago: PagoForm = { fecha_pago: new Date().toISOString().slice(0,10)
 
 export function Facturacion() {
   const { profile } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [showUpload, setShowUpload] = useState(false)
   const [facturas, setFacturas] = useState<FacturaVenta[]>([])
   const [selected, setSelected] = useState<FacturaConPagos | null>(null)
@@ -34,10 +36,17 @@ export function Facturacion() {
   const [savingPago, setSavingPago] = useState(false)
 
   const [showNueva, setShowNueva] = useState(false)
-  const [opciList, setOpciList] = useState<{ id: string; correlativo_opci: string }[]>([])
+  const [opciSearch, setOpciSearch] = useState('')
+  const [opciSugeridas, setOpciSugeridas] = useState<{ id: string; correlativo_opci: string }[]>([])
+  const [showOpciDrop, setShowOpciDrop] = useState(false)
+  const opciDropRef = useRef<HTMLDivElement>(null)
   const [facturaForm, setFacturaForm] = useState({ operacion_id: '', num_factura: '', fecha_emision: new Date().toISOString().slice(0,10), fecha_prometida_pago: '', moneda: 'USD', monto_total_sin_igv: '', factor_igv: '1.18', tc_usd_sol: '', forma_pago: '', dias_cobranza: '', categoria_forma_pago: '', categoria_operacion: '' })
   const [savingFactura, setSavingFactura] = useState(false)
   const [errorFactura, setErrorFactura] = useState<string | null>(null)
+
+  const [showEstado, setShowEstado] = useState(false)
+  const [nuevoEstadoFact, setNuevoEstadoFact] = useState<EstadoFactura | ''>('')
+  const [savingEstadoFact, setSavingEstadoFact] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -54,9 +63,44 @@ export function Facturacion() {
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
-    supabase.from('operaciones').select('id, correlativo_opci').not('estado', 'in', '("Cerrada","Anulada")').order('correlativo_opci')
-      .then(({ data }) => setOpciList((data ?? []) as { id: string; correlativo_opci: string }[]))
+    if (!opciSearch.trim()) { setOpciSugeridas([]); setShowOpciDrop(false); return }
+    const t = setTimeout(async () => {
+      const { data } = await supabase.from('operaciones').select('id, correlativo_opci')
+        .not('estado', 'in', '("Cerrada","Anulada")')
+        .ilike('correlativo_opci', `%${opciSearch}%`).order('correlativo_opci').limit(20)
+      setOpciSugeridas((data ?? []) as { id: string; correlativo_opci: string }[])
+      setShowOpciDrop(true)
+    }, 250)
+    return () => clearTimeout(t)
+  }, [opciSearch])
+
+  useEffect(() => {
+    function h(e: MouseEvent) {
+      if (opciDropRef.current && !opciDropRef.current.contains(e.target as Node)) setShowOpciDrop(false)
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
   }, [])
+
+  async function handleOpciFocus() {
+    const { data } = await supabase.from('operaciones').select('id, correlativo_opci')
+      .not('estado', 'in', '("Cerrada","Anulada")')
+      .order('correlativo_opci').limit(20)
+    setOpciSugeridas((data ?? []) as { id: string; correlativo_opci: string }[])
+    setShowOpciDrop(true)
+  }
+
+  // Pre-fill OPCI and open modal when navigated from OperacionDetail
+  useEffect(() => {
+    const opciParam = searchParams.get('opci')
+    if (opciParam) {
+      setFacturaForm(f => ({ ...f, operacion_id: opciParam }))
+      supabase.from('operaciones').select('correlativo_opci').eq('id', opciParam).single()
+        .then(({ data }) => { if (data) setOpciSearch((data as { correlativo_opci: string }).correlativo_opci) })
+      setShowNueva(true)
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   async function handleCrearFactura() {
     if (!facturaForm.num_factura || !facturaForm.monto_total_sin_igv) { setErrorFactura('N° factura y monto son obligatorios.'); return }
@@ -83,8 +127,30 @@ export function Facturacion() {
     load()
   }
 
+  const NEXT_ESTADOS_FACTURA: Partial<Record<EstadoFactura, EstadoFactura[]>> = {
+    'Pendiente de emisión':  ['Emitida', 'Anulada'],
+    'Emitida':               ['Enviada al cliente', 'Anulada'],
+    'Enviada al cliente':    ['Pendiente de pago', 'Anulada'],
+    'Pendiente de pago':     ['Pagada parcial', 'Pagada total', 'Vencida', 'Anulada'],
+    'Pagada parcial':        ['Pagada total', 'Vencida', 'Anulada'],
+    'Vencida':               ['Pagada parcial', 'Pagada total', 'Anulada'],
+    'Pagada total':          ['Nota de crédito emitida'],
+  }
+
   async function openDrawer(f: FacturaVenta) {
     const { data } = await getFactura(f.id)
+    setSelected(data as FacturaConPagos | null)
+  }
+
+  async function handleCambiarEstadoFactura() {
+    if (!selected || !nuevoEstadoFact) return
+    setSavingEstadoFact(true)
+    await cambiarEstadoFactura(selected.id, nuevoEstadoFact)
+    setSavingEstadoFact(false)
+    setShowEstado(false)
+    setNuevoEstadoFact('')
+    load()
+    const { data } = await getFactura(selected.id)
     setSelected(data as FacturaConPagos | null)
   }
 
@@ -188,17 +254,24 @@ export function Facturacion() {
 
       {/* Drawer detalle factura */}
       <Drawer
-        open={!!selected && !showPago}
+        open={!!selected && !showPago && !showEstado}
         onClose={() => setSelected(null)}
         title={selected?.num_factura ?? ''}
         sub={selected ? `${money(selected.monto_total_sin_igv * (selected.factor_igv ?? 1.18), selected.moneda)} · ${selected.status}` : ''}
         footer={
-          selected && !['Pagada total','Anulada'].includes(selected.status) ? (
+          selected ? (
             <>
               <button className="btn" onClick={() => setShowUpload(true)}><Icon name="paperclip" size={13} /> Adjuntar</button>
-              <button className="btn primary" onClick={() => setShowPago(true)}>
-                <Icon name="dollar" size={13} /> Registrar pago
-              </button>
+              {(NEXT_ESTADOS_FACTURA[selected.status]?.length ?? 0) > 0 && (
+                <button className="btn" onClick={() => { setNuevoEstadoFact(''); setShowEstado(true) }}>
+                  <Icon name="tag" size={13} /> Estado
+                </button>
+              )}
+              {!['Pagada total','Anulada','Nota de crédito emitida'].includes(selected.status) && (
+                <button className="btn primary" onClick={() => setShowPago(true)}>
+                  <Icon name="dollar" size={13} /> Registrar pago
+                </button>
+              )}
             </>
           ) : undefined
         }
@@ -250,7 +323,7 @@ export function Facturacion() {
       </Drawer>
 
       {/* Modal nueva factura */}
-      <Modal open={showNueva} onClose={() => setShowNueva(false)} title="Nueva factura de venta" size="lg"
+      <Modal open={showNueva} onClose={() => { setShowNueva(false); setOpciSearch(''); setOpciSugeridas([]) }} title="Nueva factura de venta" size="lg"
         footer={
           <>
             <button className="btn" onClick={() => setShowNueva(false)}>Cancelar</button>
@@ -263,10 +336,19 @@ export function Facturacion() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <div className="form-field" style={{ gridColumn: '1 / -1' }}>
             <label className="form-label">Operación OPCI</label>
-            <select className="select" value={facturaForm.operacion_id} onChange={e => setFacturaForm(f => ({ ...f, operacion_id: e.target.value }))} style={{ width: '100%' }}>
-              <option value="">— Sin vincular a OPCI —</option>
-              {opciList.map(o => <option key={o.id} value={o.id}>{o.correlativo_opci}</option>)}
-            </select>
+            <div style={{ position: 'relative' }} ref={opciDropRef}>
+              <input className="input" value={opciSearch} onChange={e => { setOpciSearch(e.target.value); if (!e.target.value) setFacturaForm(f => ({ ...f, operacion_id: '' })) }} onFocus={handleOpciFocus} placeholder="Buscar OPCI…" style={{ width: '100%' }} />
+              {showOpciDrop && opciSugeridas.length > 0 && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', maxHeight: 200, overflowY: 'auto' }}>
+                  <div onMouseDown={() => { setOpciSearch(''); setFacturaForm(f => ({ ...f, operacion_id: '' })); setShowOpciDrop(false) }} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12, color: 'var(--text-3)', borderBottom: '1px solid var(--border-soft)' }}>— Sin vincular a OPCI —</div>
+                  {opciSugeridas.map(o => (
+                    <div key={o.id} onMouseDown={() => { setOpciSearch(o.correlativo_opci); setFacturaForm(f => ({ ...f, operacion_id: o.id })); setShowOpciDrop(false) }} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5, borderTop: '1px solid var(--border-soft)' }} onMouseEnter={e => (e.currentTarget.style.background = 'var(--panel-2)')} onMouseLeave={e => (e.currentTarget.style.background = '')}>
+                      <span className="mono" style={{ color: 'var(--accent)', fontWeight: 600 }}>{o.correlativo_opci}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <div className="form-field">
             <label className="form-label">N° Factura *</label>
@@ -359,6 +441,39 @@ export function Facturacion() {
               <select className="select" value={pagoForm.moneda} onChange={e => setPagoForm(p => ({ ...p, moneda: e.target.value }))} style={{ width: '100%' }}>
                 <option value="PEN">PEN (Soles)</option>
                 <option value="USD">USD</option>
+              </select>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal cambiar estado factura */}
+      <Modal
+        open={showEstado}
+        onClose={() => setShowEstado(false)}
+        title="Cambiar estado de factura"
+        size="sm"
+        footer={
+          <>
+            <button className="btn" onClick={() => setShowEstado(false)}>Cancelar</button>
+            <button className="btn primary" onClick={handleCambiarEstadoFactura} disabled={savingEstadoFact || !nuevoEstadoFact}>
+              {savingEstadoFact ? 'Guardando…' : 'Confirmar'}
+            </button>
+          </>
+        }
+      >
+        {selected && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ fontSize: 12.5 }}>
+              Estado actual: <StatusBadge status={selected.status} mapping={FACTURA_STATUS_TONE} />
+            </div>
+            <div className="form-field">
+              <label className="form-label">Nuevo estado</label>
+              <select className="select" value={nuevoEstadoFact} onChange={e => setNuevoEstadoFact(e.target.value as EstadoFactura)} style={{ width: '100%' }}>
+                <option value="">— Seleccionar —</option>
+                {(NEXT_ESTADOS_FACTURA[selected.status] ?? []).map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
               </select>
             </div>
           </div>

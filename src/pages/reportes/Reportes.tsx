@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Icon, Card, KPI, DataTable, StatusBadge, OPCI_STATUS_TONE, FACTURA_STATUS_TONE, EtaCell, Badge, Tabs } from '@/components/ui'
+import { Icon, Card, KPI, DataTable, StatusBadge, OPCI_STATUS_TONE, FACTURA_STATUS_TONE, OCI_STATUS_TONE, EtaCell, Badge, Tabs } from '@/components/ui'
 import type { Column } from '@/components/ui'
 import { supabase } from '@/lib/supabase'
 import { fmtDate, money, daysFrom } from '@/lib/utils'
@@ -41,6 +41,18 @@ export function Reportes() {
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
 
+  // Importaciones por estado
+  const [importEstado, setImportEstado] = useState<{ status: string; count: number }[]>([])
+  const [loadingImport, setLoadingImport] = useState(false)
+
+  // Despachos pendientes
+  const [despachosPend, setDespachosPend] = useState<Record<string, unknown>[]>([])
+  const [loadingDesp, setLoadingDesp] = useState(false)
+
+  // Retrasos proveedor
+  const [ocRetraso, setOcRetraso] = useState<Record<string, unknown>[]>([])
+  const [loadingOc, setLoadingOc] = useState(false)
+
   async function loadOpciEstado() {
     setLoadingOpci(true)
     const { data } = await supabase.from('operaciones').select('estado, monto_total_sin_igv')
@@ -70,6 +82,43 @@ export function Reportes() {
     setLoadingVenc(false)
   }
 
+  async function loadImportaciones() {
+    setLoadingImport(true)
+    const { data } = await supabase.from('importaciones').select('status')
+    if (data) {
+      const grouped = data.reduce<Record<string, number>>((acc, r) => {
+        acc[r.status] = (acc[r.status] ?? 0) + 1
+        return acc
+      }, {})
+      setImportEstado(Object.entries(grouped).map(([status, count]) => ({ status, count })).sort((a, b) => b.count - a.count))
+    }
+    setLoadingImport(false)
+  }
+
+  async function loadDespachos() {
+    setLoadingDesp(true)
+    const { data } = await supabase
+      .from('despachos')
+      .select('*, operacion:operaciones(correlativo_opci, cliente:clientes!cliente_id(razon_social))')
+      .not('estado', 'in', '("Entregado","Anulado")')
+      .order('fecha_despacho', { ascending: true })
+    setDespachosPend((data as Record<string, unknown>[]) ?? [])
+    setLoadingDesp(false)
+  }
+
+  async function loadProveedores() {
+    setLoadingOc(true)
+    const today = new Date().toISOString().slice(0, 10)
+    const { data } = await supabase
+      .from('ordenes_compra')
+      .select('*, proveedor:proveedores(razon_social), operacion:operaciones(correlativo_opci)')
+      .lt('fecha_ofrecida', today)
+      .not('status', 'in', '("Recibido completo","Cerrado","Anulado")')
+      .order('fecha_ofrecida', { ascending: true })
+    setOcRetraso((data as Record<string, unknown>[]) ?? [])
+    setLoadingOc(false)
+  }
+
   async function loadCobranza() {
     setLoadingCob(true)
     const { data } = await supabase.from('facturas_venta')
@@ -84,6 +133,9 @@ export function Reportes() {
     if (tab === 'opci_estado') loadOpciEstado()
     else if (tab === 'vencidas') loadFacturasVencidas()
     else if (tab === 'cobranza') loadCobranza()
+    else if (tab === 'importaciones') loadImportaciones()
+    else if (tab === 'despachos') loadDespachos()
+    else if (tab === 'proveedores') loadProveedores()
   }, [tab, fechaDesde, fechaHasta])
 
   const totalVencido = facturasVenc.reduce((a, f) => a + ((f.monto_total_sin_igv as number ?? 0) * ((f.factor_igv as number) ?? 1.18)), 0)
@@ -209,9 +261,100 @@ export function Reportes() {
         </div>
       )}
 
-      {tab === 'importaciones' && <ComingSoon label="Importaciones por estado" />}
-      {tab === 'despachos'     && <ComingSoon label="Despachos pendientes" />}
-      {tab === 'proveedores'   && <ComingSoon label="Retrasos por proveedor" />}
+      {/* Importaciones por estado */}
+      {tab === 'importaciones' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            <KPI label="Total importaciones"  value={importEstado.reduce((a, e) => a + e.count, 0)} />
+            <KPI label="Estados distintos"    value={importEstado.length} />
+            <KPI label="En tránsito"          value={importEstado.find(e => e.status === 'En tránsito')?.count ?? 0} />
+          </div>
+          <Card title="Importaciones por estado" icon="ship" padding={false}>
+            <DataTable
+              columns={[
+                { key: 'status',  label: 'Estado',    render: r => <StatusBadge status={r.status as string} mapping={OCI_STATUS_TONE} /> },
+                { key: 'count',   label: 'Cantidad',  align: 'right', render: r => <span className="mono" style={{ fontWeight: 700, fontSize: 14 }}>{r.count as number}</span> },
+                { key: '_pct',    label: '% del total', align: 'right', render: r => {
+                  const total = importEstado.reduce((a, e) => a + e.count, 0)
+                  const pct = total ? Math.round(((r.count as number) / total) * 100) : 0
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
+                      <span className="mono">{pct}%</span>
+                      <div style={{ width: 60, height: 4, background: 'var(--muted-soft)', borderRadius: 2, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${pct}%`, background: 'var(--violet)' }} />
+                      </div>
+                    </div>
+                  )
+                }},
+              ] as Column<Record<string, unknown>>[]}
+              rows={importEstado as unknown as Record<string, unknown>[]}
+              idKey="status"
+              loading={loadingImport}
+              emptyMessage="Sin importaciones"
+            />
+          </Card>
+        </div>
+      )}
+
+      {/* Despachos pendientes */}
+      {tab === 'despachos' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            <KPI label="Despachos pendientes"  value={despachosPend.length} deltaTone={despachosPend.length > 0 ? 'down' : ''} />
+            <KPI label="En transporte"         value={despachosPend.filter(d => d.estado === 'En transporte').length} />
+            <KPI label="Observados"            value={despachosPend.filter(d => d.estado === 'Observado').length} deltaTone={despachosPend.filter(d => d.estado === 'Observado').length > 0 ? 'down' : ''} />
+          </div>
+          <Card title="Despachos en curso" icon="truck" padding={false}>
+            <DataTable
+              columns={[
+                { key: 'codigo_comercial', label: 'Código',    render: r => <span className="mono" style={{ color: 'var(--accent)', fontWeight: 600 }}>{r.codigo_comercial as string}</span> },
+                { key: 'descripcion',      label: 'Descripción', render: r => <span style={{ maxWidth: 200, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.descripcion as string ?? '—'}</span> },
+                { key: '_opci',            label: 'OPCI',      render: r => <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>{((r.operacion as { correlativo_opci?: string }) ?? {}).correlativo_opci ?? '—'}</span> },
+                { key: '_cliente',         label: 'Cliente',   render: r => <span>{((r.operacion as { cliente?: { razon_social?: string } }) ?? {}).cliente?.razon_social ?? '—'}</span> },
+                { key: 'fecha_despacho',   label: 'Fecha',     render: r => <span className="mono">{fmtDate(r.fecha_despacho as string)}</span> },
+                { key: 'estado',           label: 'Estado',    render: r => {
+                  const tone: Record<string, 'warn' | 'info' | 'bad' | 'muted'> = { 'Preparando': 'warn', 'En transporte': 'info', 'Observado': 'bad' }
+                  return <Badge tone={tone[r.estado as string] ?? 'muted'}>{r.estado as string}</Badge>
+                }},
+              ] as Column<Record<string, unknown>>[]}
+              rows={despachosPend}
+              idKey="id"
+              loading={loadingDesp}
+              emptyMessage="Sin despachos pendientes"
+            />
+          </Card>
+        </div>
+      )}
+
+      {/* Retrasos proveedor */}
+      {tab === 'proveedores' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            <KPI label="OC retrasadas"     value={ocRetraso.length} deltaTone={ocRetraso.length > 0 ? 'down' : ''} />
+            <KPI label="Máx. días retraso" value={Math.max(0, ...ocRetraso.map(oc => Math.abs(daysFrom(oc.fecha_ofrecida as string))))} deltaTone={ocRetraso.length > 0 ? 'down' : ''} />
+            <KPI label="Proveedores con retraso" value={new Set(ocRetraso.map(oc => ((oc.proveedor as { razon_social?: string }) ?? {}).razon_social)).size} />
+          </div>
+          <Card title="Órdenes de compra retrasadas" icon="warning" padding={false}>
+            <DataTable
+              columns={[
+                { key: 'num_oc',        label: 'N° OC',      render: r => <span className="mono" style={{ color: 'var(--accent-2)', fontWeight: 600 }}>{r.num_oc as string}</span> },
+                { key: '_proveedor',    label: 'Proveedor',  render: r => <span>{((r.proveedor as { razon_social?: string }) ?? {}).razon_social ?? '—'}</span> },
+                { key: '_opci',         label: 'OPCI',       render: r => <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>{((r.operacion as { correlativo_opci?: string }) ?? {}).correlativo_opci ?? '—'}</span> },
+                { key: 'fecha_ofrecida',label: 'F. ofrecida', render: r => <span className="mono" style={{ color: 'var(--bad)' }}>{fmtDate(r.fecha_ofrecida as string)}</span> },
+                { key: '_dias',         label: 'Días retraso', align: 'right', render: r => {
+                  const d = Math.abs(daysFrom(r.fecha_ofrecida as string))
+                  return <span className="mono" style={{ fontWeight: 700, color: 'var(--bad)' }}>{d}d</span>
+                }},
+                { key: 'status',        label: 'Estado',     render: r => <StatusBadge status={r.status as string} mapping={OCI_STATUS_TONE} /> },
+              ] as Column<Record<string, unknown>>[]}
+              rows={ocRetraso}
+              idKey="id"
+              loading={loadingOc}
+              emptyMessage="Sin órdenes retrasadas"
+            />
+          </Card>
+        </div>
+      )}
     </div>
   )
 }

@@ -116,6 +116,7 @@ export function CreateOperacion({ open, onClose, onCreated }: Props) {
       .from('profiles')
       .select('id, nombre_completo')
       .eq('activo', true)
+      .eq('es_vendedor', true)
       .order('nombre_completo')
       .then(({ data }) => setVendedores((data ?? []) as { id: string; nombre_completo: string }[]))
   }, [open])

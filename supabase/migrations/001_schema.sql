@@ -44,6 +44,7 @@ CREATE TABLE public.profiles (
                         'Administrador','Ventas','Compras Locales','Importaciones',
                         'Almacen','Facturacion','Gerencia','Lectura'
                       )),
+  es_vendedor         BOOLEAN DEFAULT FALSE,
   activo              BOOLEAN DEFAULT TRUE,
   created_at          TIMESTAMPTZ DEFAULT NOW(),
   updated_at          TIMESTAMPTZ DEFAULT NOW()
@@ -121,6 +122,10 @@ CREATE TABLE public.productos (
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   codigo_comercial    TEXT UNIQUE NOT NULL,
   descripcion         TEXT NOT NULL,
+  tipo                TEXT NOT NULL DEFAULT 'Producto' CHECK (tipo IN ('Producto','Servicio','Proyecto')),
+  clase               TEXT,
+  subclase            TEXT,
+  subsubclase         TEXT,
   unidad_medida       TEXT,
   marca               TEXT,
   codigo_erp          TEXT,
@@ -493,6 +498,21 @@ CREATE INDEX idx_am_tipo            ON public.almacen_movimientos (tipo);
 CREATE INDEX idx_am_created_at      ON public.almacen_movimientos (created_at);
 
 -- ---------------------------------------------------------------------------
+-- almacen_stock
+-- ---------------------------------------------------------------------------
+CREATE TABLE public.almacen_stock (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  almacen_id      UUID NOT NULL REFERENCES public.almacenes(id) ON DELETE CASCADE,
+  producto_codigo TEXT NOT NULL,
+  cantidad        NUMERIC NOT NULL DEFAULT 0,
+  updated_at      TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT almacen_stock_unique UNIQUE (almacen_id, producto_codigo)
+);
+
+CREATE INDEX idx_almacen_stock_almacen  ON public.almacen_stock (almacen_id);
+CREATE INDEX idx_almacen_stock_producto ON public.almacen_stock (producto_codigo);
+
+-- ---------------------------------------------------------------------------
 -- recepciones
 -- ---------------------------------------------------------------------------
 CREATE TABLE public.recepciones (
@@ -588,6 +608,10 @@ CREATE TRIGGER trg_guias_remision_updated_at
   BEFORE UPDATE ON public.guias_remision
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+CREATE INDEX idx_guias_remision_operacion_id ON public.guias_remision (operacion_id);
+CREATE INDEX idx_guias_remision_despacho_id  ON public.guias_remision (despacho_id);
+CREATE INDEX idx_guias_remision_created_at   ON public.guias_remision (created_at DESC);
+
 -- ---------------------------------------------------------------------------
 -- confirmaciones_entrega
 -- ---------------------------------------------------------------------------
@@ -604,6 +628,9 @@ CREATE TABLE public.confirmaciones_entrega (
   usuario_id          UUID REFERENCES public.profiles(id),
   created_at          TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE INDEX idx_confirmaciones_despacho_id ON public.confirmaciones_entrega (despacho_id);
+CREATE INDEX idx_confirmaciones_guia_id     ON public.confirmaciones_entrega (guia_id);
 
 -- ---------------------------------------------------------------------------
 -- documentos_adjuntos

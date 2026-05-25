@@ -363,6 +363,27 @@ CREATE POLICY "almacenes_delete"
   USING (get_user_rol() = 'Administrador');
 
 -- ---------------------------------------------------------------------------
+-- almacen_stock
+-- ---------------------------------------------------------------------------
+ALTER TABLE public.almacen_stock ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "almacen_stock_select"
+  ON public.almacen_stock FOR SELECT
+  TO authenticated
+  USING (TRUE);
+
+CREATE POLICY "almacen_stock_insert"
+  ON public.almacen_stock FOR INSERT
+  TO authenticated
+  WITH CHECK (get_user_rol() IN ('Almacen','Administrador'));
+
+CREATE POLICY "almacen_stock_update"
+  ON public.almacen_stock FOR UPDATE
+  TO authenticated
+  USING (get_user_rol() IN ('Almacen','Administrador'))
+  WITH CHECK (get_user_rol() IN ('Almacen','Administrador'));
+
+-- ---------------------------------------------------------------------------
 -- almacen_movimientos
 -- ---------------------------------------------------------------------------
 CREATE POLICY "am_select"

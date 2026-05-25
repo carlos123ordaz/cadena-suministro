@@ -56,7 +56,7 @@ export async function getImportacion(id: UUID): Promise<{
       *,
       ordenes:ordenes_compra(
         *,
-        operacion:operaciones(id, correlativo_opci, cliente:clientes(razon_social)),
+        operacion:operaciones(id, correlativo_opci, cliente:clientes!cliente_id(razon_social)),
         proveedor:proveedores(razon_social),
         items:orden_compra_items(*, producto:productos(codigo_comercial, descripcion, unidad_medida)),
         notas_lista:ordenes_compra_notas(*, usuario:profiles(nombre_completo))

@@ -16,6 +16,7 @@ import { getImportaciones } from '@/services/importaciones.service'
 import { getCobranzaPendiente } from '@/services/facturacion.service'
 import { money, fmtDate, initials } from '@/lib/utils'
 import { OPCI_STATUS_TONE } from '@/components/ui'
+import { supabase } from '@/lib/supabase'
 import type { DashboardStats, Operacion, Importacion, FacturaVenta } from '@/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -28,38 +29,72 @@ interface Alert {
   sub: string
 }
 
-// ─── Sample alerts (hardcoded) ────────────────────────────────────────────────
+// ─── Dynamic alert loader ─────────────────────────────────────────────────────
 
-const SAMPLE_ALERTS: Alert[] = [
-  {
-    id: '1',
-    type: 'bad',
-    icon: 'ship',
-    title: 'ETA vencida – Grupo IMP-2025-0041',
-    sub: 'Llegada estimada hace 3 días · En tránsito',
-  },
-  {
-    id: '2',
-    type: 'bad',
-    icon: 'invoice',
-    title: 'Factura F001-00892 vencida',
-    sub: 'Cliente: Minería del Sur SAC · Vencida hace 8 días',
-  },
-  {
-    id: '3',
-    type: 'warn',
-    icon: 'truck',
-    title: 'Proveedor retrasado – OC-2025-0118',
-    sub: 'Fecha ofrecida superada en 5 días · Confirmado',
-  },
-  {
-    id: '4',
-    type: 'warn',
-    icon: 'warning',
-    title: '3 ítems pendientes de recepción',
-    sub: 'OPCI-2025-0053 · Recepciones parciales incompletas',
-  },
-]
+async function loadDashboardAlerts(): Promise<Alert[]> {
+  const today = new Date().toISOString().slice(0, 10)
+  const out: Alert[] = []
+
+  const [etasRes, factsRes, ocsRes] = await Promise.all([
+    supabase
+      .from('importaciones')
+      .select('id, grupo_importacion, eta, status')
+      .lt('eta', today)
+      .not('status', 'in', '("Cerrada","Anulada","Recibida en almacén")')
+      .order('eta', { ascending: true })
+      .limit(5),
+    supabase
+      .from('facturas_venta')
+      .select('id, num_factura, fecha_prometida_pago, operacion:operaciones(cliente:clientes!cliente_id(razon_social))')
+      .lt('fecha_prometida_pago', today)
+      .not('status', 'in', '("Pagada total","Anulada")')
+      .order('fecha_prometida_pago', { ascending: true })
+      .limit(5),
+    supabase
+      .from('ordenes_compra')
+      .select('id, numero_oc, fecha_ofrecida, status')
+      .lt('fecha_ofrecida', today)
+      .not('status', 'in', '("Recibido completo","Cerrado","Anulado")')
+      .order('fecha_ofrecida', { ascending: true })
+      .limit(3),
+  ])
+
+  for (const i of (etasRes.data ?? []) as Array<{ id: string; grupo_importacion: string; eta: string; status: string }>) {
+    const days = Math.round((Date.parse(today) - Date.parse(i.eta)) / 86400000)
+    out.push({
+      id: `eta-${i.id}`,
+      type: 'bad',
+      icon: 'ship',
+      title: `ETA vencida – ${i.grupo_importacion}`,
+      sub: `Llegada estimada hace ${days} día${days !== 1 ? 's' : ''} · ${i.status}`,
+    })
+  }
+
+  for (const f of (factsRes.data ?? []) as Array<{ id: string; num_factura: string; fecha_prometida_pago: string; operacion: { cliente?: { razon_social?: string } } | null }>) {
+    const days = Math.round((Date.parse(today) - Date.parse(f.fecha_prometida_pago)) / 86400000)
+    const cliente = f.operacion?.cliente?.razon_social ?? '—'
+    out.push({
+      id: `fact-${f.id}`,
+      type: 'bad',
+      icon: 'invoice',
+      title: `Factura ${f.num_factura} vencida`,
+      sub: `Cliente: ${cliente} · Vencida hace ${days} día${days !== 1 ? 's' : ''}`,
+    })
+  }
+
+  for (const oc of (ocsRes.data ?? []) as Array<{ id: string; numero_oc: string; fecha_ofrecida: string; status: string }>) {
+    const days = Math.round((Date.parse(today) - Date.parse(oc.fecha_ofrecida)) / 86400000)
+    out.push({
+      id: `oc-${oc.id}`,
+      type: 'warn',
+      icon: 'truck',
+      title: `Proveedor retrasado – ${oc.numero_oc}`,
+      sub: `Fecha ofrecida superada en ${days} día${days !== 1 ? 's' : ''} · ${oc.status}`,
+    })
+  }
+
+  return out
+}
 
 // ─── Status bar helper ────────────────────────────────────────────────────────
 
@@ -248,6 +283,7 @@ export function Dashboard() {
   const [recentOps, setRecentOps] = useState<Operacion[]>([])
   const [transito, setTransito] = useState<Importacion[]>([])
   const [cobranza, setCobranza] = useState<FacturaVenta[]>([])
+  const [alerts, setAlerts] = useState<Alert[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -261,11 +297,13 @@ export function Dashboard() {
           recentRes,
           transitoRes,
           cobranzaRes,
+          alertsData,
         ] = await Promise.all([
           getDashboardStats(),
           getRecentOperaciones(15),
           getImportaciones({ status: 'En tránsito' }, { page: 1, pageSize: 10 }),
           getCobranzaPendiente(),
+          loadDashboardAlerts(),
         ])
 
         if (cancelled) return
@@ -277,6 +315,7 @@ export function Dashboard() {
         setRecentOps(recentRes.data ?? [])
         setTransito(transitoRes.data ?? [])
         setCobranza((cobranzaRes.data ?? []).slice(0, 8))
+        setAlerts(alertsData)
       } catch (e: unknown) {
         if (!cancelled) setError((e as Error)?.message ?? 'Error al cargar el dashboard')
       } finally {
@@ -558,9 +597,14 @@ export function Dashboard() {
 
         <Card title="Alertas activas" icon="bell">
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {SAMPLE_ALERTS.map(a => (
-              <AlertRow key={a.id} alert={a} />
-            ))}
+            {alerts.length === 0 ? (
+              <div style={{ color: 'var(--ok)', fontSize: 12, textAlign: 'center', padding: '16px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <Icon name="check" size={13} />
+                Sin alertas pendientes
+              </div>
+            ) : (
+              alerts.map(a => <AlertRow key={a.id} alert={a} />)
+            )}
           </div>
         </Card>
       </div>

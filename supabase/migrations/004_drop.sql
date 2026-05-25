@@ -7,6 +7,7 @@
   DROP TABLE IF EXISTS public.confirmaciones_entrega CASCADE;
   DROP TABLE IF EXISTS public.guias_remision CASCADE;
   DROP TABLE IF EXISTS public.despachos CASCADE;
+  DROP TABLE IF EXISTS public.almacen_stock CASCADE;
   DROP TABLE IF EXISTS public.almacen_movimientos CASCADE;
   DROP TABLE IF EXISTS public.recepciones CASCADE;
   DROP TABLE IF EXISTS public.pagos_factura CASCADE;
@@ -26,6 +27,7 @@
   DROP TABLE IF EXISTS public.proveedores CASCADE;
   DROP TABLE IF EXISTS public.clientes CASCADE;
   DROP TABLE IF EXISTS public.profiles CASCADE;
+  DROP TABLE IF EXISTS public.app_configuracion CASCADE;
 
   -- Eliminar funciones
   DROP FUNCTION IF EXISTS public.update_updated_at() CASCADE;

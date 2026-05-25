@@ -72,7 +72,7 @@ export async function getOperacion(id: UUID): Promise<{
     .from('operaciones')
     .select(`
       *,
-      cliente:clientes(*),
+      cliente:clientes!cliente_id(*),
       cliente_final:clientes!cliente_final_id(*),
       vendedor1:profiles!vendedor1_id(*),
       vendedor2:profiles!vendedor2_id(*),

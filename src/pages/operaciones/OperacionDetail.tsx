@@ -410,7 +410,7 @@ export function OperacionDetail() {
       {/* Facturación */}
       {tab === 'facturas' && (
         <Card title="Facturas de venta" icon="invoice" padding={false}
-          actions={<button className="btn primary xs"><Icon name="plus" size={11} /> Nueva factura</button>}>
+          actions={<button className="btn primary xs" onClick={() => navigate(`/facturacion?opci=${operacionId}`)}><Icon name="plus" size={11} /> Nueva factura</button>}>
           <DataTable
             columns={[
               { key: 'num_factura',    label: 'N° Factura', render: r => <span className="mono" style={{ color: 'var(--accent-2)' }}>{r.num_factura as string}</span> },

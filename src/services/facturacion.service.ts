@@ -17,7 +17,7 @@ export async function getFacturas(
 
   let query = supabase
     .from('facturas_venta')
-    .select('*, operacion:operaciones(correlativo_opci, cliente:clientes(razon_social))', { count: 'exact' })
+    .select('*, operacion:operaciones(correlativo_opci, cliente:clientes!cliente_id(razon_social))', { count: 'exact' })
 
   if (filters.status) query = query.eq('status', filters.status)
   if (filters.fecha_desde) query = query.gte('fecha_emision', filters.fecha_desde)
@@ -46,7 +46,7 @@ export async function getFactura(
     .from('facturas_venta')
     .select(`
       *,
-      operacion:operaciones(*, cliente:clientes(*)),
+      operacion:operaciones(*, cliente:clientes!cliente_id(*)),
       pagos:pagos_factura(*)
     `)
     .eq('id', id)
@@ -127,10 +127,21 @@ export async function marcarVencidas(): Promise<{ count: number; error: unknown 
 export async function getCobranzaPendiente(): Promise<{ data: FacturaVenta[] | null; error: unknown }> {
   const { data, error } = await supabase
     .from('facturas_venta')
-    .select('*, operacion:operaciones(correlativo_opci, cliente:clientes(razon_social))')
+    .select('*, operacion:operaciones(correlativo_opci, cliente:clientes!cliente_id(razon_social))')
     .not('status', 'in', '("Pagada total","Anulada")')
     .not('fecha_prometida_pago', 'is', null)
     .order('fecha_prometida_pago', { ascending: true })
 
   return { data: data as FacturaVenta[] | null, error }
+}
+
+export async function cambiarEstadoFactura(
+  facturaId: UUID,
+  nuevoStatus: EstadoFactura,
+): Promise<{ error: unknown }> {
+  const { error } = await supabase
+    .from('facturas_venta')
+    .update({ status: nuevoStatus })
+    .eq('id', facturaId)
+  return { error }
 }

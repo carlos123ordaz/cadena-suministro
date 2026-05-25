@@ -20,6 +20,18 @@ interface DespachoFilters {
   estado?: Despacho['estado']
 }
 
+export async function getAlmacenes(): Promise<{
+  data: { id: string; nombre: string; codigo: string }[] | null
+  error: unknown
+}> {
+  const { data, error } = await supabase
+    .from('almacenes')
+    .select('id, nombre, codigo')
+    .eq('activo', true)
+    .order('nombre')
+  return { data: data as { id: string; nombre: string; codigo: string }[] | null, error }
+}
+
 export async function getRecepciones(
   filters: RecepcionFilters = {},
 ): Promise<{ data: Recepcion[] | null; error: unknown }> {
@@ -89,7 +101,7 @@ export async function getDespachos(
 ): Promise<{ data: Despacho[] | null; error: unknown }> {
   let query = supabase
     .from('despachos')
-    .select('*, operacion:operaciones(correlativo_opci, cliente:clientes(razon_social))')
+    .select('*, operacion:operaciones(correlativo_opci, cliente:clientes!cliente_id(razon_social))')
 
   if (filters.operacion_id) query = query.eq('operacion_id', filters.operacion_id)
   if (filters.almacen_id) query = query.eq('almacen_id', filters.almacen_id)
@@ -163,23 +175,40 @@ export async function getKardex(
 }
 
 export async function getStock(almacenId?: UUID): Promise<{
-  data: { almacen_id: UUID; producto_codigo: string; cantidad: number }[] | null
+  data: { almacen_id: UUID; producto_codigo: string; cantidad: number; stock_actual: number; descripcion: string; unidad_medida: string }[] | null
   error: unknown
 }> {
   let query = supabase.from('almacen_stock').select('*')
   if (almacenId) query = query.eq('almacen_id', almacenId)
 
   const { data, error } = await query.order('producto_codigo', { ascending: true })
-  return {
-    data: data as { almacen_id: UUID; producto_codigo: string; cantidad: number }[] | null,
-    error,
-  }
+  if (!data || data.length === 0) return { data: [], error }
+
+  const codigos = [...new Set((data as { producto_codigo: string }[]).map(s => s.producto_codigo))]
+  const { data: productos } = await supabase
+    .from('productos')
+    .select('codigo_comercial, descripcion, unidad_medida')
+    .in('codigo_comercial', codigos)
+
+  const prodMap = Object.fromEntries(
+    ((productos ?? []) as { codigo_comercial: string; descripcion: string; unidad_medida: string }[])
+      .map(p => [p.codigo_comercial, p]),
+  )
+
+  const enriched = (data as { almacen_id: UUID; producto_codigo: string; cantidad: number }[]).map(s => ({
+    ...s,
+    stock_actual: s.cantidad,
+    descripcion: prodMap[s.producto_codigo]?.descripcion ?? '—',
+    unidad_medida: prodMap[s.producto_codigo]?.unidad_medida ?? '—',
+  }))
+
+  return { data: enriched, error }
 }
 
 export async function getDespachosPendientes(): Promise<{ data: Despacho[] | null; error: unknown }> {
   const { data, error } = await supabase
     .from('despachos')
-    .select('*, operacion:operaciones(correlativo_opci, cliente:clientes(razon_social))')
+    .select('*, operacion:operaciones(correlativo_opci, cliente:clientes!cliente_id(razon_social))')
     .eq('estado', 'Preparando')
     .order('created_at', { ascending: true })
 
