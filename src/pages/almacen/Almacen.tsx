@@ -36,7 +36,9 @@ interface RecItemRow {
 interface OCListItem {
   id: string
   num_oc: string
+  tipo: string
   operacion_id: string | null
+  importacion_id: string | null
   proveedor?: { razon_social: string }
   operacion?: { correlativo_opci: string }
 }
@@ -247,8 +249,7 @@ export function Almacen() {
     })
     supabase
       .from('ordenes_compra')
-      .select('id, num_oc, operacion_id, proveedor:proveedores(razon_social), operacion:operaciones(correlativo_opci)')
-      .eq('tipo', 'Local')
+      .select('id, num_oc, tipo, operacion_id, importacion_id, proveedor:proveedores(razon_social), operacion:operaciones(correlativo_opci)')
       .not('status', 'in', '("Cerrado","Anulado")')
       .order('created_at', { ascending: false })
       .limit(200)
@@ -405,6 +406,7 @@ export function Almacen() {
           almacen_id: recHeader.almacen_id,
           orden_compra_id: recHeader.orden_compra_id || undefined,
           operacion_id: oc?.operacion_id || undefined,
+          importacion_id: oc?.importacion_id || undefined,
           num_oc: oc?.num_oc || undefined,
           item_oc: item.item_oc || undefined,
           codigo_comercial: item.codigo_comercial,
@@ -750,7 +752,15 @@ export function Almacen() {
                       onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted-soft)')}
                       onMouseLeave={e => (e.currentTarget.style.background = recHeader.orden_compra_id === oc.id ? 'var(--accent-soft)' : '')}
                     >
-                      {oc.num_oc}
+                      <span style={{ fontFamily: 'var(--font-mono)' }}>{oc.num_oc}</span>
+                      {oc.tipo === 'Importacion' && (
+                        <span style={{
+                          marginLeft: 8, fontSize: 10, padding: '1px 5px',
+                          borderRadius: 4, background: 'var(--accent-soft)',
+                          color: 'var(--accent)', fontFamily: 'var(--font-sans)',
+                          fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em',
+                        }}>IMP</span>
+                      )}
                     </div>
                   ))}
                 </div>

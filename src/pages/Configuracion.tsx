@@ -139,18 +139,22 @@ export function Configuracion() {
     }
     setInviteSaving(true)
     setInviteError(null)
-    const { data: authData, error } = await supabase.auth.signUp({
-      email: inviteForm.email,
-      password: inviteForm.password,
-      options: {
-        data: { nombre_completo: inviteForm.nombre_completo, rol: inviteForm.rol },
+    const session = (await supabase.auth.getSession()).data.session
+    const res = await supabase.functions.invoke('create-user', {
+      body: {
+        email: inviteForm.email,
+        password: inviteForm.password,
+        nombre_completo: inviteForm.nombre_completo,
+        rol: inviteForm.rol,
+        es_vendedor: inviteForm.es_vendedor,
       },
+      headers: { Authorization: `Bearer ${session?.access_token}` },
     })
-    if (!error && authData.user && inviteForm.es_vendedor) {
-      await supabase.from('profiles').update({ es_vendedor: true }).eq('id', authData.user.id)
-    }
     setInviteSaving(false)
-    if (error) { setInviteError(error.message); return }
+    if (res.error || res.data?.error) {
+      setInviteError(res.data?.error ?? res.error?.message ?? 'Error al crear usuario')
+      return
+    }
     setInviteSuccess(true)
     setInviteForm({ email: '', nombre_completo: '', rol: 'Ventas', password: '', es_vendedor: false })
     const { data } = await supabase.from('profiles').select('*').order('nombre_completo')
