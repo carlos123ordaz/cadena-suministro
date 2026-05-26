@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import {
   Icon, Card, DataTable, StatusBadge, OCI_STATUS_TONE, OPCI_STATUS_TONE,
@@ -17,7 +17,7 @@ import {
 import { getDocumentos } from '@/services/documentos.service'
 import { getComentarios, addComentario, registrarEvento, getHistorial } from '@/services/historial.service'
 import { useAuth } from '@/context/AuthContext'
-import { fmtDate, fmtDateTime, money, initials, daysFrom } from '@/lib/utils'
+import { fmtDate, fmtDateTime, money, initials, daysFrom, fmtDbError } from '@/lib/utils'
 import type {
   Importacion, CostoImportacion, TipoCosto, CriterioDistribucion,
   HistorialEvento, Comentario, DocumentoAdjunto, OrdenCompraNota,
@@ -201,7 +201,7 @@ export function ImportacionDetail() {
       status: 'Borrador',
     })
     setSavingOci(false)
-    if (error) { setOciError((error as Error).message ?? 'Error al crear.'); return }
+    if (error) { setOciError(fmtDbError(error, 'Error al crear.')); return }
     setShowAddOci(false)
     setOciProv(null)
     setOciForm({ num_oc: '', fecha_oc: new Date().toISOString().slice(0, 10), moneda: 'USD', monto_total: '', categoria_forma_pago: '', forma_pago: '', num_cotizacion_proveedor: '', fecha_ofrecida: '', notas: '' })
@@ -250,7 +250,7 @@ export function ImportacionDetail() {
       status: (editGrupoForm.status as EstadoImportacion) || undefined,
     })
     setSavingEditGrupo(false)
-    if (error) { setEditGrupoError((error as Error)?.message ?? 'Error al actualizar.'); return }
+    if (error) { setEditGrupoError(fmtDbError(error, 'Error al actualizar.')); return }
     setShowEditGrupo(false)
     load()
   }
@@ -297,7 +297,7 @@ export function ImportacionDetail() {
       updated_at: new Date().toISOString(),
     }).eq('id', editOciId)
     setSavingEditOci(false)
-    if (error) { setEditOciError((error as Error)?.message ?? 'Error al actualizar.'); return }
+    if (error) { setEditOciError(fmtDbError(error, 'Error al actualizar.')); return }
     setShowEditOci(false)
     load()
   }
@@ -307,7 +307,7 @@ export function ImportacionDetail() {
     setDeletingOci(true)
     const { error } = await supabase.from('ordenes_compra').delete().eq('id', confirmDeleteOci.id as string)
     setDeletingOci(false)
-    if (error) { alert((error as Error)?.message ?? 'No se pudo eliminar.'); return }
+    if (error) { alert(fmtDbError(error, 'No se pudo eliminar.')); return }
     setConfirmDeleteOci(null)
     load()
   }

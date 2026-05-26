@@ -81,3 +81,25 @@ export function etaTone(days: number): 'bad' | 'warn' | 'info' | 'ok' | 'muted' 
   if (days <= 7) return 'info'
   return 'ok'
 }
+
+export function fmtDbError(error: unknown, fallback = 'Ocurrió un error. Intenta de nuevo.'): string {
+  const msg = ((error as Error)?.message ?? '').toLowerCase()
+  if (msg.includes('duplicate key') || msg.includes('unique constraint') || msg.includes('already exists')) {
+    if (msg.includes('num_oc'))         return 'El N° OC ya está registrado. Ingresa uno diferente.'
+    if (msg.includes('num_guia') || msg.includes('numero_guia')) return 'El N° de guía ya está registrado. Ingresa uno diferente.'
+    if (msg.includes('correlativo'))    return 'El correlativo ya existe. Ingresa uno diferente.'
+    if (msg.includes('ruc'))            return 'El RUC ya está registrado en el sistema.'
+    if (msg.includes('email') || msg.includes('correo')) return 'El correo electrónico ya está en uso.'
+    return 'Ya existe un registro con ese valor. Verifica e intenta de nuevo.'
+  }
+  if (msg.includes('foreign key') || msg.includes('violates foreign')) {
+    return 'No se puede eliminar porque tiene registros relacionados.'
+  }
+  if (msg.includes('not-null') || msg.includes('null value in column')) {
+    return 'Falta un campo obligatorio.'
+  }
+  if (msg.includes('permission denied') || msg.includes('row-level security') || msg.includes('policy')) {
+    return 'No tienes permisos para realizar esta acción.'
+  }
+  return fallback
+}

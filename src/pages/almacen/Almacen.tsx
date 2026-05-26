@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Icon, Card, KPI, DataTable, StatusBadge,
   RECEPCION_STATUS_TONE, DESPACHO_STATUS_TONE, Tabs, Modal, Badge,
@@ -10,7 +10,8 @@ import {
   getKardex, getStock, getAlmacenes,
 } from '@/services/almacen.service'
 import { supabase } from '@/lib/supabase'
-import { fmtDate, fmtDateTime } from '@/lib/utils'
+import { fmtDate, fmtDateTime, fmtDbError } from '@/lib/utils'
+import { downloadCsv } from '@/lib/export'
 import { useAuth } from '@/context/AuthContext'
 import type { Recepcion, Despacho, AlmacenMovimiento, ConformidadRecepcion } from '@/types'
 
@@ -426,7 +427,7 @@ export function Almacen() {
         profile.id,
       )
       if (error) {
-        setRecError(`Error en "${item.codigo_comercial}": ${(error as Error)?.message ?? 'Error desconocido'}`)
+        setRecError(`Error en "${item.codigo_comercial}": ${fmtDbError(error, 'Error desconocido')}`)
         setSavingRec(false)
         return
       }
@@ -472,7 +473,7 @@ export function Almacen() {
       profile.id,
     )
     setSavingDesp(false)
-    if (despErr) { setDespError((despErr as Error)?.message ?? 'Error al registrar despacho.'); return }
+    if (despErr) { setDespError(fmtDbError(despErr, 'Error al registrar despacho.')); return }
     setShowDesp(false)
     resetDesp()
     loadTab()
@@ -509,7 +510,7 @@ export function Almacen() {
       usuario_id: profile.id,
     })
     setSavingGuiaRapida(false)
-    if (guiaErr) { setGuiaRapidaError((guiaErr as Error)?.message ?? 'Error al emitir guía.'); return }
+    if (guiaErr) { setGuiaRapidaError(fmtDbError(guiaErr, 'Error al emitir guía.')); return }
     setShowGuiaRapida(false)
     setGuiaRapidaDespachoId('')
     setGuiaRapidaOpciId('')
@@ -563,16 +564,15 @@ export function Almacen() {
         <Card padding={false}>
           <DataTable
             columns={[
-              { key: 'operacion',        label: 'OPCI',     render: r => <span className="mono" style={{ color: 'var(--accent-2)', fontSize: 11 }}>{(r.operacion as { correlativo_opci: string })?.correlativo_opci ?? '—'}</span> },
-              { key: 'num_oc',           label: 'N° OC',    render: r => <span className="mono">{r.num_oc as string ?? '—'}</span> },
-              { key: 'item_oc',          label: 'Item',     width: 60, render: r => <span className="mono muted">{r.item_oc as string ?? '—'}</span> },
-              { key: 'codigo_comercial', label: 'Código',   render: r => <span className="mono">{r.codigo_comercial as string}</span> },
-              { key: 'descripcion',      label: 'Descripción', render: r => <span style={{ maxWidth: 200, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.descripcion as string}</span> },
-              { key: 'cantidad_esperada', label: 'Esperada', align: 'right', render: r => <span className="mono">{r.cantidad_esperada as number}</span> },
-              { key: 'cantidad_recibida', label: 'Recibida', align: 'right', render: r => <span className="mono" style={{ color: 'var(--ok)', fontWeight: 600 }}>{r.cantidad_recibida as number}</span> },
-              { key: 'unidad_medida',    label: 'UM',       width: 50 },
-              { key: 'fecha_recepcion',  label: 'Fecha',    render: r => <span className="mono">{fmtDate(r.fecha_recepcion as string)}</span> },
-              { key: 'estado',           label: 'Estado',   render: r => <StatusBadge status={r.estado as string} mapping={RECEPCION_STATUS_TONE} /> },
+              { key: 'operacion',        label: 'OPCI',        render: r => <span className="mono" style={{ color: 'var(--accent-2)', fontSize: 11 }}>{(r.operacion as { correlativo_opci: string })?.correlativo_opci ?? '—'}</span> },
+              { key: 'num_oc',           label: 'N° OC',       render: r => <span className="mono">{r.num_oc as string ?? '—'}</span> },
+              { key: 'codigo_comercial', label: 'Código',      render: r => <span className="mono">{r.codigo_comercial as string}</span> },
+              { key: 'descripcion',      label: 'Descripción', render: r => <span style={{ maxWidth: 160, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.descripcion as string}>{r.descripcion as string}</span> },
+              { key: 'cantidad_esperada', label: 'Esp.',       align: 'right', width: 60, render: r => <span className="mono">{r.cantidad_esperada as number}</span> },
+              { key: 'cantidad_recibida', label: 'Rec.',       align: 'right', width: 60, render: r => <span className="mono" style={{ color: 'var(--ok)', fontWeight: 600 }}>{r.cantidad_recibida as number}</span> },
+              { key: 'unidad_medida',    label: 'UM',          width: 50 },
+              { key: 'fecha_recepcion',  label: 'Fecha',       render: r => <span className="mono">{fmtDate(r.fecha_recepcion as string)}</span> },
+              { key: 'estado',           label: 'Estado',      render: r => <StatusBadge status={r.estado as string} mapping={RECEPCION_STATUS_TONE} /> },
               { key: '_actions', label: '', width: 56, render: r => (
                 <div style={{ display: 'flex', gap: 4 }}>
                   <button className="btn ghost xs" onClick={e => { e.stopPropagation(); openEditRec(r as unknown as Recepcion) }} title="Editar"><Icon name="edit" size={12} /></button>
@@ -583,6 +583,8 @@ export function Almacen() {
             rows={recepciones as unknown as Record<string, unknown>[]}
             idKey="id"
             loading={loading}
+            pageSize={15}
+            density="compact"
             emptyMessage="No hay recepciones registradas"
           />
         </Card>
@@ -627,7 +629,16 @@ export function Almacen() {
                 onChange={e => setKardexCodigo(e.target.value)} style={{ width: 220 }} />
             </div>
             <div className="spacer" />
-            <button className="btn sm"><Icon name="download" size={13} /> Exportar kardex</button>
+            <button className="btn sm" onClick={() => downloadCsv(`kardex_${new Date().toISOString().slice(0,10)}`, kardex.map(m => ({
+              'Fecha': fmtDateTime(m.created_at as string),
+              'Código': m.producto_codigo as string ?? '',
+              'Tipo': m.tipo as string ?? '',
+              'Documento': m.documento_referencia as string ?? '',
+              'Entrada': m.tipo === 'entrada' ? m.cantidad as number : '',
+              'Salida': m.tipo === 'salida' ? m.cantidad as number : '',
+              'Stock Final': m.stock_final as number ?? '',
+              'Comentario': m.comentario as string ?? '',
+            })))}><Icon name="download" size={13} /> Exportar kardex</button>
           </div>
           <DataTable
             columns={[
@@ -657,7 +668,12 @@ export function Almacen() {
         <Card padding={false}>
           <div className="table-toolbar">
             <div className="spacer" />
-            <button className="btn sm"><Icon name="download" size={13} /> Exportar stock</button>
+            <button className="btn sm" onClick={() => downloadCsv(`stock_${new Date().toISOString().slice(0,10)}`, stock.map(s => ({
+            'Código': s.producto_codigo as string ?? '',
+            'Descripción': s.descripcion as string ?? '',
+            'UM': s.unidad_medida as string ?? '',
+            'Stock Actual': s.stock_actual as number ?? '',
+          })))}><Icon name="download" size={13} /> Exportar stock</button>
           </div>
           <DataTable
             columns={[

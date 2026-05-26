@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+﻿import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Icon, Card, KPI, DataTable, StatusBadge, OCI_STATUS_TONE, EtaCell, Badge, Modal,
@@ -7,7 +7,8 @@ import {
 import type { Column, ProveedorOption, ImportacionOption } from '@/components/ui'
 import { getImportaciones, createImportacion, updateImportacion } from '@/services/importaciones.service'
 import { supabase } from '@/lib/supabase'
-import { money, fmtDate, truncate } from '@/lib/utils'
+import { money, fmtDate, truncate, fmtDbError } from '@/lib/utils'
+import { downloadCsv } from '@/lib/export'
 import type { Importacion, EstadoImportacion, OrdenCompraImportacion, EstadoOCI } from '@/types'
 import { OciDetailModal } from './OciDetailModal'
 import { useAuth } from '@/context/AuthContext'
@@ -91,6 +92,7 @@ export function ImportacionesList() {
   // ── Delete OCI ─────────────────────────────────────────────────────────
   const [confirmDeleteOci, setConfirmDeleteOci] = useState<OrdenCompraImportacion | null>(null)
   const [deletingOci, setDeletingOci] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   // ── Nuevo grupo ────────────────────────────────────────────────────────
   const [showNueva, setShowNueva] = useState(false)
@@ -109,6 +111,49 @@ export function ImportacionesList() {
   const [confirmDeleteGrupo, setConfirmDeleteGrupo] = useState<Importacion | null>(null)
   const [deletingGrupo, setDeletingGrupo] = useState(false)
   const [deleteGrupoError, setDeleteGrupoError] = useState<string | null>(null)
+
+  async function handleExport() {
+    setExporting(true)
+    if (viewMode === 'grupos') {
+      // Exportar grupos con sus OCIs
+      let query = supabase
+        .from('importaciones')
+        .select('grupo_importacion, estado, operador_logistico, incoterm, tipo_embarque, pais_origen, eta, ordenes:ordenes_compra(num_oc, status, fecha_oc, moneda, monto_total, proveedor:proveedores(razon_social))')
+        .order('created_at', { ascending: false })
+      if (q) query = (query as typeof query).ilike('grupo_importacion', `%${q}%`)
+      if (estado) query = (query as typeof query).eq('estado', estado)
+      const { data } = await query
+      type OCI = { num_oc: string; status: string; fecha_oc?: string; moneda?: string; monto_total?: number; proveedor?: { razon_social: string } }
+      type Grupo = { grupo_importacion: string; estado: string; operador_logistico?: string; incoterm?: string; tipo_embarque?: string; pais_origen?: string; eta?: string; ordenes?: OCI[] }
+      const rows = (data as unknown as Grupo[] ?? []).flatMap(g => {
+        const base = { 'Grupo': g.grupo_importacion, 'Estado': g.estado, 'Operador Logístico': g.operador_logistico ?? '', 'Incoterm': g.incoterm ?? '', 'Tipo Embarque': g.tipo_embarque ?? '', 'País Origen': g.pais_origen ?? '', 'ETA': g.eta ?? '' }
+        const ocis = g.ordenes ?? []
+        if (!ocis.length) return [{ ...base, 'N° OCI': '', 'Proveedor': '', 'Estado OCI': '', 'Fecha OC': '', 'Moneda': '', 'Monto Total': '' }]
+        return ocis.map(o => ({ ...base, 'N° OCI': o.num_oc, 'Proveedor': o.proveedor?.razon_social ?? '', 'Estado OCI': o.status, 'Fecha OC': o.fecha_oc ?? '', 'Moneda': o.moneda ?? '', 'Monto Total': o.monto_total ?? '' }))
+      })
+      downloadCsv(`importaciones_${new Date().toISOString().slice(0, 10)}`, rows)
+    } else {
+      // Exportar OCIs con sus ítems
+      let query = supabase
+        .from('ordenes_compra')
+        .select('num_oc, status, fecha_oc, moneda, proveedor:proveedores(razon_social), importacion:importaciones(grupo_importacion), items:orden_compra_items(item_oc, codigo_comercial, descripcion, cantidad, unidad_medida, pcu1, monto_total, operacion:operaciones(correlativo_opci))')
+        .eq('tipo', 'Importacion')
+        .order('created_at', { ascending: false })
+      if (ociSearch) query = (query as typeof query).ilike('num_oc', `%${ociSearch}%`)
+      if (ociFilterEstado) query = (query as typeof query).eq('status', ociFilterEstado)
+      const { data } = await query
+      type Item = { item_oc?: string; codigo_comercial?: string; descripcion?: string; cantidad?: number; unidad_medida?: string; pcu1?: number; monto_total?: number; operacion?: { correlativo_opci: string } }
+      type OCI = { num_oc: string; status: string; fecha_oc?: string; moneda?: string; proveedor?: { razon_social: string }; importacion?: { grupo_importacion: string }; items?: Item[] }
+      const rows = (data as unknown as OCI[] ?? []).flatMap(oc => {
+        const base = { 'N° OCI': oc.num_oc, 'Grupo': oc.importacion?.grupo_importacion ?? '', 'Proveedor': oc.proveedor?.razon_social ?? '', 'Estado': oc.status, 'Fecha OC': oc.fecha_oc ?? '', 'Moneda': oc.moneda ?? '' }
+        const items = oc.items ?? []
+        if (!items.length) return [{ ...base, 'OPCI': '', 'Ítem OC': '', 'Código': '', 'Descripción': '', 'Cantidad': '', 'UM': '', 'P.U.': '', 'Total': '' }]
+        return items.map(i => ({ ...base, 'OPCI': i.operacion?.correlativo_opci ?? '', 'Ítem OC': i.item_oc ?? '', 'Código': i.codigo_comercial ?? '', 'Descripción': i.descripcion ?? '', 'Cantidad': i.cantidad ?? '', 'UM': i.unidad_medida ?? '', 'P.U.': i.pcu1 ?? '', 'Total': i.monto_total ?? '' }))
+      })
+      downloadCsv(`importaciones_oci_${new Date().toISOString().slice(0, 10)}`, rows)
+    }
+    setExporting(false)
+  }
 
   // ── Data loaders ───────────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -145,6 +190,16 @@ export function ImportacionesList() {
   useEffect(() => {
     if (viewMode === 'ocis') loadOcis()
   }, [viewMode, loadOcis])
+
+  useEffect(() => {
+    if (!showNuevaOci) return
+    supabase.from('ordenes_compra')
+      .select('num_oc').eq('tipo', 'Importacion')
+      .order('created_at', { ascending: false }).limit(1)
+      .then(({ data }) => {
+        if (data?.[0]?.num_oc) setOciNuevoForm(f => ({ ...f, num_oc: data[0].num_oc }))
+      })
+  }, [showNuevaOci])
 
   const filteredOcis = useMemo(() => {
     let rows = ociRows
@@ -186,7 +241,7 @@ export function ImportacionesList() {
       status: 'Borrador',
     })
     setSavingNueva(false)
-    if (error || !data) { setErrorNueva((error as Error)?.message ?? 'Error al crear.'); return }
+    if (error || !data) { setErrorNueva(fmtDbError(error, 'Error al crear.')); return }
     setShowNueva(false)
     setImpForm(defaultImpForm)
     load()
@@ -230,7 +285,7 @@ export function ImportacionesList() {
       observaciones: editGrupoForm.observaciones || undefined,
     })
     setSavingEditGrupo(false)
-    if (error) { setErrorEditGrupo((error as Error)?.message ?? 'Error al actualizar.'); return }
+    if (error) { setErrorEditGrupo(fmtDbError(error, 'Error al actualizar.')); return }
     setShowEditGrupo(false)
     load()
   }
@@ -240,7 +295,7 @@ export function ImportacionesList() {
     setDeletingGrupo(true); setDeleteGrupoError(null)
     const { error } = await supabase.from('importaciones').delete().eq('id', confirmDeleteGrupo.id)
     setDeletingGrupo(false)
-    if (error) { setDeleteGrupoError((error as Error)?.message ?? 'No se pudo eliminar.'); return }
+    if (error) { setDeleteGrupoError(fmtDbError(error, 'No se pudo eliminar.')); return }
     setConfirmDeleteGrupo(null)
     load()
   }
@@ -265,7 +320,7 @@ export function ImportacionesList() {
       status: 'Borrador',
     })
     setSavingNuevaOci(false)
-    if (error) { setErrorNuevaOci((error as Error)?.message ?? 'Error al crear.'); return }
+    if (error) { setErrorNuevaOci(fmtDbError(error, 'Error al crear.')); return }
     setShowNuevaOci(false)
     setOciNuevoProv(null)
     setOciNuevoImportacion(null)
@@ -318,7 +373,7 @@ export function ImportacionesList() {
       updated_at: new Date().toISOString(),
     }).eq('id', editOciData.id)
     setSavingEditOci(false)
-    if (error) { setErrorEditOci((error as Error)?.message ?? 'Error al actualizar.'); return }
+    if (error) { setErrorEditOci(fmtDbError(error, 'Error al actualizar.')); return }
     setShowEditOci(false)
     setEditOciData(null)
     loadOcis()
@@ -329,7 +384,7 @@ export function ImportacionesList() {
     setDeletingOci(true)
     const { error } = await supabase.from('ordenes_compra').delete().eq('id', confirmDeleteOci.id)
     setDeletingOci(false)
-    if (error) { alert((error as Error)?.message ?? 'No se pudo eliminar.'); return }
+    if (error) { alert(fmtDbError(error, 'No se pudo eliminar.')); return }
     setConfirmDeleteOci(null)
     loadOcis()
   }
@@ -401,19 +456,6 @@ export function ImportacionesList() {
     {
       key: 'proveedor', label: 'Proveedor',
       render: r => <span title={(r.proveedor as { razon_social?: string } | undefined)?.razon_social}>{truncate((r.proveedor as { razon_social?: string } | undefined)?.razon_social ?? '—', 28)}</span>,
-    },
-    {
-      key: 'operacion', label: 'OPCI',
-      render: r => {
-        const op = r.operacion as { id?: string; correlativo_opci?: string } | undefined
-        if (!op?.correlativo_opci) return <span className="muted">—</span>
-        return (
-          <button className="btn ghost xs" style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-2)', padding: '0 4px' }}
-            onClick={e => { e.stopPropagation(); navigate(`/operaciones/${op.id}`) }}>
-            {op.correlativo_opci}
-          </button>
-        )
-      },
     },
     {
       key: 'importacion', label: 'Grupo importación',
@@ -639,7 +681,7 @@ export function ImportacionesList() {
                 {['Marítimo FCL','Marítimo LCL','Aéreo','Terrestre','Courier'].map(t => <option key={t} value={t}>{t}</option>)}
               </select>
               <div className="spacer" />
-              <button className="btn sm"><Icon name="download" size={13} /> Exportar</button>
+              <button className="btn sm" onClick={handleExport} disabled={exporting}><Icon name="download" size={13} /> {exporting ? 'Exportando…' : 'Exportar'}</button>
             </div>
             <DataTable
               columns={columns as unknown as Column<Record<string, unknown>>[]}

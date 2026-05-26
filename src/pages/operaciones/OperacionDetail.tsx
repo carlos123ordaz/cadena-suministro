@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Icon, Card, DataTable, StatusBadge, OPCI_STATUS_TONE, OCL_STATUS_TONE,
@@ -13,7 +13,7 @@ import { getParametrosLista } from '@/services/configuracion.service'
 import { addComentario, getComentarios, getHistorial } from '@/services/historial.service'
 import { getDocumentos } from '@/services/documentos.service'
 import { useAuth } from '@/context/AuthContext'
-import { fmtDate, fmtDateTime, money, initials } from '@/lib/utils'
+import { fmtDate, fmtDateTime, money, initials, fmtDbError } from '@/lib/utils'
 import type {
   Operacion, OperacionItem, OrdenCompraLocal, OrdenCompraImportacion,
   FacturaVenta, Recepcion, Despacho, GuiaRemision, HistorialEvento,
@@ -70,6 +70,7 @@ export function OperacionDetail() {
   const [historial, setHistorial] = useState<HistorialEvento[]>([])
   const [comentarios, setComentarios] = useState<Comentario[]>([])
   const [documentos, setDocumentos] = useState<DocumentoAdjunto[]>([])
+  const [compraItems, setCompraItems] = useState<Record<string, unknown>[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('resumen')
   const [unidadesMedida, setUnidadesMedida] = useState<string[]>(UNIDADES_MEDIDA_DEFAULT)
@@ -126,16 +127,25 @@ export function OperacionDetail() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [opRes, histRes, comRes, docRes] = await Promise.all([
+    const [opRes, histRes, comRes, docRes, ciRes] = await Promise.all([
       getOperacion(operacionId),
       getHistorial('operacion', operacionId),
       getComentarios('operacion', operacionId),
       getDocumentos('operacion', operacionId),
+      supabase
+        .from('orden_compra_items')
+        .select(`
+          id, item_oc, item_op, codigo_comercial, descripcion, cantidad, unidad_medida, pcu1, monto_total, moneda,
+          orden_compra:ordenes_compra(id, num_oc, tipo, status, proveedor:proveedores(razon_social), importacion:importaciones(id, grupo_importacion))
+        `)
+        .eq('operacion_id', operacionId)
+        .order('created_at'),
     ])
     setOp(opRes.data as FullOperacion | null)
     setHistorial(histRes.data ?? [])
     setComentarios(comRes.data ?? [])
     setDocumentos(docRes.data ?? [])
+    setCompraItems((ciRes.data ?? []) as Record<string, unknown>[])
     setLoading(false)
   }, [operacionId])
 
@@ -255,7 +265,7 @@ export function OperacionDetail() {
       precio_total_estimado: itemForm.precio_total_estimado ? parseFloat(itemForm.precio_total_estimado) : null,
       estado: 'Pendiente',
     }).select('id').single()
-    if (error) { setSavingItem(false); setItemError((error as Error).message ?? 'Error al guardar.'); return }
+    if (error) { setSavingItem(false); setItemError(fmtDbError(error, 'Error al guardar.')); return }
     if (itemCreado?.id && itemNotas.length > 0 && profile) {
       await supabase.from('operacion_item_notas').insert(
         itemNotas.map(nota => ({ operacion_item_id: (itemCreado as { id: string }).id, nota, usuario_id: profile.id }))
@@ -319,8 +329,8 @@ export function OperacionDetail() {
   const tabsWithCounts = TABS.map(t => {
     const countMap: Record<string, number> = {
       items:     op.items?.length ?? 0,
-      ocl:       op.ordenes_locales?.length ?? 0,
-      oci:       op.ordenes_importacion?.length ?? 0,
+      ocl:       compraItems.filter(i => (i.orden_compra as Record<string, unknown> | undefined)?.tipo === 'Local').length,
+      oci:       compraItems.filter(i => (i.orden_compra as Record<string, unknown> | undefined)?.tipo === 'Importacion').length,
       historial: historial.length,
       docs:      documentos.length,
       notas:     comentarios.length,
@@ -438,39 +448,51 @@ export function OperacionDetail() {
 
       {/* Compras Locales */}
       {tab === 'ocl' && (
-        <Card title="Compras locales asociadas" icon="cart" padding={false}>
+        <Card title="Ítems de compras locales" icon="cart" padding={false}>
           <DataTable
             columns={[
-              { key: 'num_oc',   label: 'N° OC', render: r => <span className="mono" style={{ color: 'var(--accent-2)' }}>{r.num_oc as string}</span> },
-              { key: 'proveedor',label: 'Proveedor', render: r => <span>{(r.proveedor as {razon_social: string})?.razon_social ?? '—'}</span> },
-              { key: 'fecha_oc', label: 'Fecha', render: r => <span className="mono">{fmtDate(r.fecha_oc as string)}</span> },
-              { key: 'monto_total', label: 'Monto', align: 'right', render: r => <span className="mono">{money(r.monto_total as number, r.moneda as string)}</span> },
-              { key: 'fecha_ofrecida', label: 'F. ofrecida', render: r => <EtaCell eta={r.fecha_ofrecida as string} /> },
-              { key: 'status',   label: 'Estado', render: r => <StatusBadge status={r.status as string} mapping={OCL_STATUS_TONE} /> },
+              { key: '_oc',    label: 'N° OC',      width: 130, render: r => <span className="mono" style={{ color: 'var(--accent-2)' }}>{(r.orden_compra as Record<string,unknown>)?.num_oc as string ?? '—'}</span> },
+              { key: '_prov',  label: 'Proveedor',               render: r => <span>{((r.orden_compra as Record<string,unknown>)?.proveedor as {razon_social:string}|undefined)?.razon_social ?? '—'}</span> },
+              { key: '_est',   label: 'Estado OC',  width: 150,  render: r => { const s = (r.orden_compra as Record<string,unknown>)?.status as string; return s ? <StatusBadge status={s} mapping={OCL_STATUS_TONE} /> : <span className="muted">—</span> } },
+              { key: 'item_oc', label: 'Ítem OC',   width: 70 },
+              { key: 'item_op', label: 'Ítem OP',   width: 70,   render: r => r.item_op ? <span className="mono" style={{ color: 'var(--accent-2)', fontSize: 11 }}>{r.item_op as string}</span> : <span className="muted">—</span> },
+              { key: 'codigo_comercial', label: 'Código',        render: r => <span className="mono">{r.codigo_comercial as string}</span> },
+              { key: 'descripcion', label: 'Descripción',        render: r => <span style={{ maxWidth: 180, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.descripcion as string}>{r.descripcion as string}</span> },
+              { key: 'cantidad', label: 'Cant.', align: 'right', width: 70, render: r => <span className="mono">{r.cantidad as number}</span> },
+              { key: 'unidad_medida', label: 'UM', width: 55 },
+              { key: 'pcu1',   label: 'P.U.',   align: 'right',  render: r => <span className="mono">{(r.pcu1 as number)?.toFixed(2)} {r.moneda as string}</span> },
+              { key: 'monto_total', label: 'Total', align: 'right', render: r => <span className="mono" style={{ fontWeight: 600 }}>{(r.monto_total as number)?.toFixed(2)} {r.moneda as string}</span> },
             ] as Column<Record<string, unknown>>[]}
-            rows={(op.ordenes_locales ?? []) as unknown as Record<string, unknown>[]}
+            rows={compraItems.filter(i => (i.orden_compra as Record<string,unknown>|undefined)?.tipo === 'Local')}
             idKey="id"
-            emptyMessage="Sin compras locales asociadas"
+            pageSize={20}
+            emptyMessage="Sin ítems de compras locales asociados a esta OPCI"
           />
         </Card>
       )}
 
       {/* Importaciones */}
       {tab === 'oci' && (
-        <Card title="Compras por importación" icon="ship" padding={false}>
+        <Card title="Ítems de compras por importación" icon="ship" padding={false}>
           <DataTable
             columns={[
-              { key: 'num_oc',        label: 'N° OC', render: r => <span className="mono" style={{ color: 'var(--accent-2)' }}>{r.num_oc as string}</span> },
-              { key: 'importacion',   label: 'Grupo Importación', render: r => <span className="mono">{(r.importacion as {grupo_importacion: string})?.grupo_importacion ?? '—'}</span> },
-              { key: 'proveedor',     label: 'Proveedor', render: r => <span>{(r.proveedor as {razon_social: string})?.razon_social ?? '—'}</span> },
-              { key: 'incoterm',      label: 'Incoterm', render: r => r.incoterm ? <Badge tone="muted">{r.incoterm as string}</Badge> : <span className="muted">—</span> },
-              { key: 'tipo_embarque', label: 'Embarque', render: r => <span className="muted">{r.tipo_embarque as string ?? '—'}</span> },
-              { key: 'eta',           label: 'ETA', render: r => <EtaCell eta={r.eta as string} /> },
-              { key: 'status',        label: 'Estado', render: r => <StatusBadge status={r.status as string} mapping={OCI_STATUS_TONE} /> },
+              { key: '_oc',    label: 'N° OCI',     width: 130, render: r => <span className="mono" style={{ color: 'var(--accent-2)' }}>{(r.orden_compra as Record<string,unknown>)?.num_oc as string ?? '—'}</span> },
+              { key: '_imp',   label: 'Grupo Imp.',              render: r => <span className="mono" style={{ fontSize: 11 }}>{((r.orden_compra as Record<string,unknown>)?.importacion as {grupo_importacion:string}|undefined)?.grupo_importacion ?? '—'}</span> },
+              { key: '_prov',  label: 'Proveedor',               render: r => <span>{((r.orden_compra as Record<string,unknown>)?.proveedor as {razon_social:string}|undefined)?.razon_social ?? '—'}</span> },
+              { key: '_est',   label: 'Estado OC',  width: 150,  render: r => { const s = (r.orden_compra as Record<string,unknown>)?.status as string; return s ? <StatusBadge status={s} mapping={OCI_STATUS_TONE} /> : <span className="muted">—</span> } },
+              { key: 'item_oc', label: 'Ítem OC',   width: 70 },
+              { key: 'item_op', label: 'Ítem OP',   width: 70,   render: r => r.item_op ? <span className="mono" style={{ color: 'var(--accent-2)', fontSize: 11 }}>{r.item_op as string}</span> : <span className="muted">—</span> },
+              { key: 'codigo_comercial', label: 'Código',        render: r => <span className="mono">{r.codigo_comercial as string}</span> },
+              { key: 'descripcion', label: 'Descripción',        render: r => <span style={{ maxWidth: 160, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.descripcion as string}>{r.descripcion as string}</span> },
+              { key: 'cantidad', label: 'Cant.', align: 'right', width: 70, render: r => <span className="mono">{r.cantidad as number}</span> },
+              { key: 'unidad_medida', label: 'UM', width: 55 },
+              { key: 'pcu1',   label: 'P.U.',   align: 'right',  render: r => <span className="mono">{(r.pcu1 as number)?.toFixed(2)} {r.moneda as string}</span> },
+              { key: 'monto_total', label: 'Total', align: 'right', render: r => <span className="mono" style={{ fontWeight: 600 }}>{(r.monto_total as number)?.toFixed(2)} {r.moneda as string}</span> },
             ] as Column<Record<string, unknown>>[]}
-            rows={(op.ordenes_importacion ?? []) as unknown as Record<string, unknown>[]}
+            rows={compraItems.filter(i => (i.orden_compra as Record<string,unknown>|undefined)?.tipo === 'Importacion')}
             idKey="id"
-            emptyMessage="Sin compras por importación"
+            pageSize={20}
+            emptyMessage="Sin ítems de compras por importación asociados a esta OPCI"
           />
         </Card>
       )}

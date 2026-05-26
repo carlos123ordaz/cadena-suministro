@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Icon, Card, KPI, DataTable, StatusBadge, FACTURA_STATUS_TONE, EtaCell, Modal, Drawer, MetaGrid, Badge, UploadDocumentoModal } from '@/components/ui'
 import type { Column } from '@/components/ui'
 import { getFacturas, getFactura, registrarPago, createFactura, cambiarEstadoFactura } from '@/services/facturacion.service'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
-import { money, fmtDate, daysFrom } from '@/lib/utils'
+import { money, fmtDate, daysFrom, fmtDbError } from '@/lib/utils'
+import { downloadCsv } from '@/lib/export'
 import type { FacturaVenta, EstadoFactura, PagoFactura } from '@/types'
 
 interface FacturaConPagos extends FacturaVenta { pagos?: PagoFactura[] }
@@ -59,6 +60,19 @@ export function Facturacion() {
 
   const [deleteRow, setDeleteRow] = useState<FacturaVenta | null>(null)
   const [deletingRow, setDeletingRow] = useState(false)
+
+  function handleExport() {
+    downloadCsv(`facturas_${new Date().toISOString().slice(0,10)}`, facturas.map(f => ({
+      'N° Factura': f.num_factura ?? '',
+      'Estado': f.status,
+      'Fecha Emisión': f.fecha_emision ?? '',
+      'Fecha Pago Prometida': f.fecha_prometida_pago ?? '',
+      'Moneda': f.moneda ?? '',
+      'Monto s/IGV': f.monto_total_sin_igv ?? '',
+      'Factor IGV': f.factor_igv ?? '',
+      'Forma de Pago': f.forma_pago ?? '',
+    })))
+  }
 
   function openEditFact(r: FacturaVenta) {
     setEditForm({
@@ -176,7 +190,7 @@ export function Facturacion() {
       status: 'Pendiente de emisión',
     })
     setSavingFactura(false)
-    if (error) { setErrorFactura((error as Error)?.message ?? 'Error al crear.'); return }
+    if (error) { setErrorFactura(fmtDbError(error, 'Error al crear.')); return }
     setShowNueva(false)
     setFacturaForm({ operacion_id: '', num_factura: '', fecha_emision: new Date().toISOString().slice(0,10), fecha_prometida_pago: '', moneda: 'USD', monto_total_sin_igv: '', factor_igv: '1.18', tc_usd_sol: '', forma_pago: '', dias_cobranza: '', categoria_forma_pago: '', categoria_operacion: '' })
     load()
@@ -222,7 +236,7 @@ export function Facturacion() {
       entidad_financiera: pagoForm.entidad_financiera || undefined,
     } as unknown as Omit<PagoFactura, 'id' | 'factura_id' | 'created_at'>)
     setSavingPago(false)
-    if (error) { setErrorPago((error as Error)?.message ?? 'Error al registrar pago.'); return }
+    if (error) { setErrorPago(fmtDbError(error, 'Error al registrar pago.')); return }
     setShowPago(false)
     setPagoForm(defaultPago)
     load()
@@ -280,7 +294,7 @@ export function Facturacion() {
           <div className="page-sub">Control de facturas de venta y cobranza</div>
         </div>
         <div className="page-actions">
-          <button className="btn sm"><Icon name="download" size={13} /> Exportar</button>
+          <button className="btn sm" onClick={handleExport}><Icon name="download" size={13} /> Exportar</button>
           <button className="btn primary sm" onClick={() => setShowNueva(true)}><Icon name="plus" size={13} /> Nueva factura</button>
         </div>
       </div>

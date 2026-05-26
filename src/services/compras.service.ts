@@ -56,7 +56,7 @@ export async function getOrdenCompraLocal(id: UUID): Promise<{
       *,
       operacion:operaciones(*, cliente:clientes!cliente_id(*)),
       proveedor:proveedores(*),
-      items:orden_compra_items(*, producto:productos(codigo_comercial, descripcion, unidad_medida)),
+      items:orden_compra_items(*, producto:productos(codigo_comercial, descripcion, unidad_medida), operacion:operaciones(id, correlativo_opci)),
       fechas_historial:proveedor_fecha_historial(*, usuario:profiles(*)),
       notas_lista:ordenes_compra_notas(*, usuario:profiles(nombre_completo))
     `)

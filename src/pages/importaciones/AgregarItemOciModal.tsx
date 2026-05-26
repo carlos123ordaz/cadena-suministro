@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect } from 'react'
+﻿import { useState, useRef, useEffect } from 'react'
 import { Modal } from '@/components/ui'
 import { supabase } from '@/lib/supabase'
 import { getParametrosLista } from '@/services/configuracion.service'
+import { fmtDbError } from '@/lib/utils'
 
 interface Props {
   open: boolean
@@ -22,11 +23,12 @@ type ItemForm = {
   moneda: string
   pcu1: string
   operacion_item_id: string
+  opci_id: string
 }
 
 const defaultForm = (moneda = 'USD'): ItemForm => ({
   item_oc: '', producto_id: '', codigo_comercial: '', descripcion: '',
-  cantidad: '', unidad_medida: '', moneda, pcu1: '', operacion_item_id: '',
+  cantidad: '', unidad_medida: '', moneda, pcu1: '', operacion_item_id: '', opci_id: '',
 })
 
 const UM_LIST_DEFAULT = ['UND','KG','M','M2','M3','L','GLN','PAR','SET','CAJA','ROLLO','HRS','TON','PZA','BOL','JGO','GLB','MLL']
@@ -111,7 +113,7 @@ export function AgregarItemOciModal({ open, onClose, ordenCompraId, ordenMoneda 
 
   function selectOpci(o: { id: string; correlativo_opci: string }) {
     setOpciSearch(o.correlativo_opci)
-    setForm(f => ({ ...f, operacion_item_id: '' }))
+    setForm(f => ({ ...f, opci_id: o.id, operacion_item_id: '' }))
     setOpciItems([])
     setShowOpciDrop(false)
     supabase.from('operacion_items')
@@ -121,10 +123,9 @@ export function AgregarItemOciModal({ open, onClose, ordenCompraId, ordenMoneda 
   }
 
   async function handleSubmit() {
-    if (!form.descripcion.trim() || !form.cantidad || !form.pcu1) {
-      setError('Descripción, cantidad y precio unitario son obligatorios.')
-      return
-    }
+    if (!form.descripcion.trim()) { setError('La descripción del ítem es obligatoria.'); return }
+    if (!form.cantidad || parseFloat(form.cantidad) <= 0) { setError('Ingresa una cantidad válida mayor a 0.'); return }
+    if (!form.pcu1 || parseFloat(form.pcu1) <= 0) { setError('Ingresa el precio unitario.'); return }
     setSaving(true)
     setError(null)
     const cantidad = parseFloat(form.cantidad)
@@ -133,7 +134,7 @@ export function AgregarItemOciModal({ open, onClose, ordenCompraId, ordenMoneda 
     const { error: dbError } = await supabase.from('orden_compra_items').insert({
       orden_compra_id: ordenCompraId,
       producto_id: form.producto_id || null,
-      operacion_id: operacionId || null,
+      operacion_id: form.opci_id || operacionId || null,
       operacion_item_id: form.operacion_item_id || null,
       item_oc: form.item_oc || null,
       item_op: linkedItem?.item_op || null,
@@ -146,7 +147,7 @@ export function AgregarItemOciModal({ open, onClose, ordenCompraId, ordenMoneda 
       monto_total: cantidad * pcu1,
     })
     setSaving(false)
-    if (dbError) { setError((dbError as Error).message ?? 'Error al guardar.'); return }
+    if (dbError) { setError(fmtDbError(dbError, 'Error al guardar.')); return }
     onSuccess()
     onClose()
   }
@@ -156,7 +157,7 @@ export function AgregarItemOciModal({ open, onClose, ordenCompraId, ordenMoneda 
       footer={
         <>
           <button className="btn" onClick={onClose}>Cancelar</button>
-          <button className="btn primary" onClick={handleSubmit} disabled={saving || !form.cantidad || !form.pcu1}>
+          <button className="btn primary" onClick={handleSubmit} disabled={saving}>
             {saving ? 'Guardando…' : 'Agregar ítem'}
           </button>
         </>

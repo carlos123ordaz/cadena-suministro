@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { Icon, Card, DataTable, Modal, Badge } from '@/components/ui'
 import type { Column } from '@/components/ui'
 import { getProductos, searchProductos, createProducto, updateProducto } from '@/services/productos.service'
 import { supabase } from '@/lib/supabase'
 import { money } from '@/lib/utils'
+import { downloadCsv } from '@/lib/export'
 import type { Producto, TipoProducto } from '@/types'
 import { getParametrosLista } from '@/services/configuracion.service'
 
@@ -268,7 +269,18 @@ export function Productos() {
             ))}
           </div>
           <div className="spacer" />
-          <button className="btn sm"><Icon name="download" size={13} /> Exportar</button>
+          <button className="btn sm" onClick={() => downloadCsv(`productos_${new Date().toISOString().slice(0,10)}`, filtered.map(p => ({
+            'Código': p.codigo_comercial ?? '',
+            'Descripción': p.descripcion ?? '',
+            'Tipo': p.tipo ?? '',
+            'Clase': p.clase ?? '',
+            'Subclase': p.subclase ?? '',
+            'UM': p.unidad_medida ?? '',
+            'Marca': p.marca ?? '',
+            'Precio Ref.': p.precio_referencial ?? '',
+            'Moneda Ref.': p.moneda_ref ?? '',
+            'Activo': p.activo ? 'Sí' : 'No',
+          })))}><Icon name="download" size={13} /> Exportar</button>
         </div>
         <DataTable
           columns={columns as unknown as Column<Record<string, unknown>>[]}

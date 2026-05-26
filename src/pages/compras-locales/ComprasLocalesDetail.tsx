@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Icon, Card, DataTable, StatusBadge, Badge, EtaCell, MetaGrid, Modal,
@@ -12,7 +12,7 @@ import {
 } from '@/services/compras.service'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { fmtDate, money, truncate } from '@/lib/utils'
+import { fmtDate, money, truncate, fmtDbError } from '@/lib/utils'
 import { getParametrosLista } from '@/services/configuracion.service'
 import type {
   OrdenCompraLocal, OrdenCompraLocalItem, ProveedorFechaHistorial,
@@ -81,6 +81,13 @@ export function ComprasLocalesDetail() {
   const [notaText, setNotaText] = useState('')
   const [notaSaving, setNotaSaving] = useState(false)
 
+  // Editar / eliminar ítem
+  const [editingItem, setEditingItem] = useState<OrdenCompraLocalItem | null>(null)
+  const [editItemForm, setEditItemForm] = useState({ item_oc: '', codigo_comercial: '', descripcion: '', cantidad: '', unidad_medida: '', moneda: 'USD', pcu1: '' })
+  const [editItemSaving, setEditItemSaving] = useState(false)
+  const [editItemError, setEditItemError] = useState<string | null>(null)
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null)
+
   const load = useCallback(async () => {
     if (!id) return
     setLoading(true)
@@ -144,10 +151,10 @@ export function ComprasLocalesDetail() {
 
 
   async function handleAddItem() {
-    if (!id || !addItemForm.cantidad || !addItemForm.pcu1) {
-      setAddItemError('Cantidad y precio unitario son obligatorios.')
-      return
-    }
+    if (!id) return
+    if (!addItemForm.descripcion.trim()) { setAddItemError('La descripción del ítem es obligatoria.'); return }
+    if (!addItemForm.cantidad || parseFloat(addItemForm.cantidad) <= 0) { setAddItemError('Ingresa una cantidad válida mayor a 0.'); return }
+    if (!addItemForm.pcu1 || parseFloat(addItemForm.pcu1) <= 0) { setAddItemError('Ingresa el precio unitario.'); return }
     setAddItemSaving(true)
     setAddItemError(null)
     const cantidad = parseFloat(addItemForm.cantidad)
@@ -214,16 +221,84 @@ export function ComprasLocalesDetail() {
     load()
   }
 
+  function openEditItem(item: OrdenCompraLocalItem) {
+    setEditingItem(item)
+    setEditItemForm({
+      item_oc: item.item_oc ?? '',
+      codigo_comercial: item.codigo_comercial ?? '',
+      descripcion: item.descripcion ?? '',
+      cantidad: String(item.cantidad ?? ''),
+      unidad_medida: item.unidad_medida ?? '',
+      moneda: item.moneda ?? 'USD',
+      pcu1: String(item.pcu1 ?? ''),
+    })
+    setEditItemError(null)
+  }
+
+  async function handleSaveEditItem() {
+    if (!editingItem) return
+    if (!editItemForm.descripcion.trim()) { setEditItemError('La descripción del ítem es obligatoria.'); return }
+    if (!editItemForm.cantidad || parseFloat(editItemForm.cantidad) <= 0) { setEditItemError('Ingresa una cantidad válida mayor a 0.'); return }
+    if (!editItemForm.pcu1 || parseFloat(editItemForm.pcu1) <= 0) { setEditItemError('Ingresa el precio unitario.'); return }
+    setEditItemSaving(true)
+    setEditItemError(null)
+    const cantidad = parseFloat(editItemForm.cantidad)
+    const pcu1 = parseFloat(editItemForm.pcu1)
+    const { error } = await supabase.from('orden_compra_items').update({
+      item_oc: editItemForm.item_oc || null,
+      codigo_comercial: editItemForm.codigo_comercial || null,
+      descripcion: editItemForm.descripcion.trim(),
+      cantidad,
+      unidad_medida: editItemForm.unidad_medida || null,
+      moneda: editItemForm.moneda || 'USD',
+      pcu1,
+      monto_total: cantidad * pcu1,
+    }).eq('id', editingItem.id)
+    setEditItemSaving(false)
+    if (error) { setEditItemError(fmtDbError(error, 'Error al guardar.')); return }
+    setEditingItem(null)
+    load()
+  }
+
+  async function handleDeleteItem(itemId: string) {
+    if (!confirm('¿Eliminar este ítem? Esta acción no se puede deshacer.')) return
+    setDeletingItemId(itemId)
+    await supabase.from('orden_compra_items').delete().eq('id', itemId)
+    setDeletingItemId(null)
+    load()
+  }
+
   const itemColumns: Column<OrdenCompraLocalItem>[] = [
     { key: 'item_oc', label: 'Item OC', width: 60 },
     { key: 'item_op', label: 'Ítem OP', width: 70, render: r => r.item_op
       ? <span className="mono" style={{ color: 'var(--accent-2)', fontWeight: 600, fontSize: 11 }}>{r.item_op}</span>
       : <span style={{ color: 'var(--text-3)', fontSize: 11 }}>—</span> },
+    { key: 'operacion', label: 'OPCI', width: 110, render: r => {
+      const op = (r as unknown as Record<string, unknown>).operacion as { correlativo_opci?: string } | undefined
+      return op?.correlativo_opci
+        ? <span className="mono" style={{ color: 'var(--accent-2)', fontSize: 11 }}>{op.correlativo_opci}</span>
+        : <span className="muted" style={{ fontSize: 11 }}>—</span>
+    }},
     { key: 'codigo_comercial', label: 'Código', render: r => <span className="mono">{r.codigo_comercial}</span> },
     { key: 'descripcion', label: 'Descripción', render: r => <span title={r.descripcion}>{r.descripcion}</span> },
     { key: 'cantidad', label: 'Cant / UM', render: r => <span className="mono">{r.cantidad} {r.unidad_medida}</span> },
     { key: 'pcu1', label: 'P.U.', align: 'right', render: r => <span className="mono">{money(r.pcu1, r.moneda)}</span> },
     { key: 'monto_total', label: 'Total', align: 'right', render: r => <span className="mono" style={{ fontWeight: 600 }}>{money(r.monto_total, r.moneda)}</span> },
+    { key: '_actions' as keyof OrdenCompraLocalItem, label: '', width: 72, align: 'right', render: r => (
+      <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+        <button className="btn ghost xs" title="Editar" onClick={() => openEditItem(r)}>
+          <Icon name="edit" size={12} />
+        </button>
+        <button className="btn ghost xs" title="Eliminar"
+          disabled={deletingItemId === r.id}
+          style={{ color: 'var(--bad)' }}
+          onClick={() => handleDeleteItem(r.id)}>
+          {deletingItemId === r.id
+            ? <Icon name="spinner" size={12} style={{ animation: 'spin 1s linear infinite' }} />
+            : <Icon name="trash" size={12} />}
+        </button>
+      </div>
+    )},
   ]
 
   if (loading) {
@@ -364,7 +439,7 @@ export function ComprasLocalesDetail() {
         footer={
           <>
             <button className="btn" onClick={() => setShowAddItem(false)}>Cancelar</button>
-            <button className="btn primary" onClick={handleAddItem} disabled={addItemSaving || !addItemForm.cantidad || !addItemForm.pcu1}>
+            <button className="btn primary" onClick={handleAddItem} disabled={addItemSaving}>
               {addItemSaving ? 'Guardando…' : 'Agregar ítem'}
             </button>
           </>
@@ -524,6 +599,59 @@ export function ComprasLocalesDetail() {
               <span className="muted">Total: </span>
               <span className="mono" style={{ fontWeight: 600 }}>
                 {(parseFloat(addItemForm.cantidad || '0') * parseFloat(addItemForm.pcu1 || '0')).toLocaleString('es-PE', { minimumFractionDigits: 2 })} {addItemForm.moneda}
+              </span>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* Modal: Editar ítem */}
+      <Modal open={!!editingItem} onClose={() => setEditingItem(null)} title="Editar ítem" size="md"
+        footer={
+          <>
+            <button className="btn" onClick={() => setEditingItem(null)}>Cancelar</button>
+            <button className="btn primary" onClick={handleSaveEditItem} disabled={editItemSaving}>
+              {editItemSaving ? 'Guardando…' : 'Guardar cambios'}
+            </button>
+          </>
+        }>
+        {editItemError && <div style={{ background: 'var(--bad-soft)', border: '1px solid var(--bad)', borderRadius: 6, padding: '8px 12px', fontSize: 12.5, color: 'var(--bad)', marginBottom: 12 }}>{editItemError}</div>}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div className="form-field">
+            <label className="form-label">Ítem OC</label>
+            <input className="input" value={editItemForm.item_oc} onChange={e => setEditItemForm(f => ({ ...f, item_oc: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} placeholder="1, 2, 3…" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Código comercial</label>
+            <input className="input" value={editItemForm.codigo_comercial} onChange={e => setEditItemForm(f => ({ ...f, codigo_comercial: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} />
+          </div>
+          <div className="form-field" style={{ gridColumn: '1 / -1' }}>
+            <label className="form-label">Descripción *</label>
+            <input className="input" value={editItemForm.descripcion} onChange={e => setEditItemForm(f => ({ ...f, descripcion: e.target.value }))} style={{ width: '100%' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Cantidad *</label>
+            <input type="number" className="input" value={editItemForm.cantidad} onChange={e => setEditItemForm(f => ({ ...f, cantidad: e.target.value }))} style={{ width: '100%' }} step="1" min="0" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Unidad de medida</label>
+            <input className="input" value={editItemForm.unidad_medida} onChange={e => setEditItemForm(f => ({ ...f, unidad_medida: e.target.value.toUpperCase() }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} placeholder="UND, KG, M…" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Moneda</label>
+            <select className="select" value={editItemForm.moneda} onChange={e => setEditItemForm(f => ({ ...f, moneda: e.target.value }))} style={{ width: '100%' }}>
+              {['USD', 'PEN', 'EUR'].map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div className="form-field">
+            <label className="form-label">Precio unitario *</label>
+            <input type="number" className="input" value={editItemForm.pcu1} onChange={e => setEditItemForm(f => ({ ...f, pcu1: e.target.value }))} style={{ width: '100%' }} step="0.01" min="0" />
+          </div>
+          {editItemForm.cantidad && editItemForm.pcu1 && (
+            <div style={{ gridColumn: '1 / -1', background: 'var(--panel-2)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 12px', fontSize: 12.5 }}>
+              <span className="muted">Total: </span>
+              <span className="mono" style={{ fontWeight: 600 }}>
+                {(parseFloat(editItemForm.cantidad || '0') * parseFloat(editItemForm.pcu1 || '0')).toLocaleString('es-PE', { minimumFractionDigits: 2 })} {editItemForm.moneda}
               </span>
             </div>
           )}

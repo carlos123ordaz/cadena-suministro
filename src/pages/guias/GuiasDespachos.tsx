@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { Icon, Card, DataTable, EtaCell, Modal, Tabs, Badge, StatusBadge, DESPACHO_STATUS_TONE } from '@/components/ui'
 import type { Column } from '@/components/ui'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { fmtDate } from '@/lib/utils'
+import { fmtDate, fmtDbError } from '@/lib/utils'
+import { downloadCsv } from '@/lib/export'
 import type { GuiaRemision, ConfirmacionEntrega, Despacho, EstadoGuia } from '@/types'
 
 const TABS = [
@@ -68,11 +69,17 @@ export function GuiasDespachos() {
   const [errorGuia, setErrorGuia] = useState<string | null>(null)
   const [opciList, setOpciList] = useState<OpciItem[]>([])
   const [despachosList, setDespachosList] = useState<DespachoItem[]>([])
+  const [opciSearch, setOpciSearch] = useState('')
+  const [showOpciDrop, setShowOpciDrop] = useState(false)
+  const opciDropRef = useRef<HTMLDivElement>(null)
 
   const [showConf, setShowConf] = useState(false)
   const [confForm, setConfForm] = useState<ConfForm>(defaultConf)
   const [savingConf, setSavingConf] = useState(false)
   const [errorConf, setErrorConf] = useState<string | null>(null)
+  const [confDespSearch, setConfDespSearch] = useState('')
+  const [showConfDespDrop, setShowConfDespDrop] = useState(false)
+  const confDespDropRef = useRef<HTMLDivElement>(null)
 
   // Estado change — Guía
   const [showEstadoGuia, setShowEstadoGuia] = useState(false)
@@ -115,24 +122,52 @@ export function GuiasDespachos() {
   useEffect(() => { loadTab() }, [loadTab])
 
   useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (opciDropRef.current && !opciDropRef.current.contains(e.target as Node))
+        setShowOpciDrop(false)
+      if (confDespDropRef.current && !confDespDropRef.current.contains(e.target as Node))
+        setShowConfDespDrop(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  useEffect(() => {
     if (!showGuia) return
+    setOpciSearch('')
     supabase.from('operaciones').select('id, correlativo_opci')
-      .not('estado', 'in', '("Cerrado","Anulado")').order('correlativo_opci', { ascending: false }).limit(200)
+      .not('estado', 'in', '("Cerrada","Anulada")').order('correlativo_opci').limit(200)
       .then(({ data }) => setOpciList((data ?? []) as OpciItem[]))
     supabase.from('despachos').select('id, codigo_comercial, descripcion, fecha_despacho, distrito_despacho, operacion_id')
-      .not('estado', 'in', '("Entregado","Anulado")').order('created_at', { ascending: false }).limit(200)
+      .not('estado', 'in', '("Entregado","Anulado")').order('created_at', { ascending: false }).limit(500)
       .then(({ data }) => setDespachosList((data ?? []) as DespachoItem[]))
   }, [showGuia])
 
   useEffect(() => {
     if (!showConf) return
+    setConfDespSearch('')
     supabase.from('despachos').select('id, codigo_comercial, descripcion, fecha_despacho, distrito_despacho, operacion_id')
-      .order('created_at', { ascending: false }).limit(200)
+      .not('estado', 'in', '("Entregado","Anulado")').order('created_at', { ascending: false }).limit(500)
       .then(({ data }) => setDespachosList((data ?? []) as DespachoItem[]))
   }, [showConf])
 
+  function handleExportGuias() {
+    downloadCsv(`guias_remision_${new Date().toISOString().slice(0,10)}`, guias.map(g => ({
+      'N° Guía': g.numero_guia,
+      'OPCI': ((g as unknown as Record<string, unknown>).operacion as { correlativo_opci?: string } | undefined)?.correlativo_opci ?? '',
+      'Fecha Emisión': g.fecha_emision ?? '',
+      'Fecha Despacho': g.fecha_despacho ?? '',
+      'Transportista': g.transportista ?? '',
+      'Placa': g.placa ?? '',
+      'Conductor': g.conductor ?? '',
+      'Distrito Destino': g.distrito_destino ?? '',
+      'Estado': g.estado,
+    })))
+  }
+
   async function handleGuardarGuia() {
     if (!profile) { setErrorGuia('Error de sesión. Recarga la página.'); return }
+    if (!guiaForm.operacion_id) { setErrorGuia('Selecciona la OPCI asociada a esta guía.'); return }
     if (!guiaForm.numero_guia) { setErrorGuia('El número de guía es obligatorio.'); return }
     setSavingGuia(true)
     setErrorGuia(null)
@@ -152,7 +187,7 @@ export function GuiasDespachos() {
       usuario_id: profile.id,
     })
     setSavingGuia(false)
-    if (error) { setErrorGuia((error as Error)?.message ?? 'Error al guardar la guía.'); return }
+    if (error) { setErrorGuia(fmtDbError(error, 'Error al guardar la guía.')); return }
     setShowGuia(false)
     setGuiaForm(defaultGuia)
     loadTab()
@@ -173,7 +208,7 @@ export function GuiasDespachos() {
       usuario_id: profile.id,
     })
     setSavingConf(false)
-    if (error) { setErrorConf((error as Error)?.message ?? 'Error al registrar confirmación.'); return }
+    if (error) { setErrorConf(fmtDbError(error, 'Error al registrar confirmación.')); return }
     setShowConf(false)
     setConfForm(defaultConf)
     loadTab()
@@ -226,7 +261,7 @@ export function GuiasDespachos() {
                 onChange={e => setQ(e.target.value)} style={{ width: 220 }} />
             </div>
             <div className="spacer" />
-            <button className="btn sm"><Icon name="download" size={13} /> Exportar</button>
+            <button className="btn sm" onClick={handleExportGuias}><Icon name="download" size={13} /> Exportar</button>
           </div>
           <DataTable
             columns={[
@@ -320,12 +355,12 @@ export function GuiasDespachos() {
       )}
 
       {/* Modal nueva guía */}
-      <Modal open={showGuia} onClose={() => { setShowGuia(false); setGuiaForm(defaultGuia); setErrorGuia(null) }}
+      <Modal open={showGuia} onClose={() => { setShowGuia(false); setGuiaForm(defaultGuia); setErrorGuia(null); setOpciSearch('') }}
         title="Nueva guía de remisión" size="lg"
         footer={
           <>
-            <button className="btn" onClick={() => { setShowGuia(false); setGuiaForm(defaultGuia); setErrorGuia(null) }}>Cancelar</button>
-            <button className="btn primary" onClick={handleGuardarGuia} disabled={savingGuia || !guiaForm.numero_guia}>
+            <button className="btn" onClick={() => { setShowGuia(false); setGuiaForm(defaultGuia); setErrorGuia(null); setOpciSearch('') }}>Cancelar</button>
+            <button className="btn primary" onClick={handleGuardarGuia} disabled={savingGuia}>
               {savingGuia ? 'Guardando…' : 'Guardar guía'}
             </button>
           </>
@@ -333,33 +368,70 @@ export function GuiasDespachos() {
       >
         {errorGuia && <div style={{ background: 'var(--bad-soft)', border: '1px solid var(--bad)', borderRadius: 6, padding: '8px 12px', fontSize: 12.5, color: 'var(--bad)', marginBottom: 12 }}>{errorGuia}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <div className="form-field">
-            <label className="form-label">OPCI (opcional)</label>
-            <select className="select" value={guiaForm.operacion_id} onChange={e => setGuiaForm(g => ({ ...g, operacion_id: e.target.value }))} style={{ width: '100%' }}>
-              <option value="">— Sin OPCI —</option>
-              {opciList.map(o => <option key={o.id} value={o.id}>{o.correlativo_opci}</option>)}
-            </select>
+          <div className="form-field" style={{ gridColumn: '1 / -1' }}>
+            <label className="form-label">OPCI *</label>
+            <div style={{ position: 'relative' }} ref={opciDropRef}>
+              <input
+                className="input"
+                value={opciSearch}
+                onChange={e => {
+                  setOpciSearch(e.target.value)
+                  setShowOpciDrop(true)
+                  if (!e.target.value) setGuiaForm(g => ({ ...g, operacion_id: '', despacho_id: '' }))
+                }}
+                onFocus={() => setShowOpciDrop(true)}
+                placeholder="Buscar OPCI…"
+                style={{ width: '100%' }}
+                autoComplete="off"
+              />
+              {showOpciDrop && (() => {
+                const filtered = opciSearch
+                  ? opciList.filter(o => o.correlativo_opci.toLowerCase().includes(opciSearch.toLowerCase()))
+                  : opciList
+                return filtered.length > 0 ? (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 4px 16px rgba(0,0,0,.18)', maxHeight: 200, overflowY: 'auto', marginTop: 2 }}>
+                    {filtered.map(o => (
+                      <div key={o.id}
+                        style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5 }}
+                        onMouseDown={() => {
+                          setOpciSearch(o.correlativo_opci)
+                          setGuiaForm(g => ({ ...g, operacion_id: o.id, despacho_id: '' }))
+                          setShowOpciDrop(false)
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--panel-2)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        <span className="mono" style={{ color: 'var(--accent)', fontWeight: 600 }}>{o.correlativo_opci}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null
+              })()}
+            </div>
           </div>
-          <div className="form-field">
-            <label className="form-label">Despacho asociado (opcional)</label>
-            <select className="select" value={guiaForm.despacho_id} onChange={e => {
-              const d = despachosList.find(x => x.id === e.target.value)
-              setGuiaForm(g => ({
-                ...g,
-                despacho_id: e.target.value,
-                ...(d ? {
-                  distrito_destino: d.distrito_despacho ?? g.distrito_destino,
-                  fecha_despacho: d.fecha_despacho ?? g.fecha_despacho,
-                  operacion_id: d.operacion_id ?? g.operacion_id,
-                } : {}),
-              }))
-            }} style={{ width: '100%' }}>
+          <div className="form-field" style={{ gridColumn: '1 / -1' }}>
+            <label className="form-label">Despacho asociado{guiaForm.operacion_id ? '' : ' (selecciona OPCI primero)'}</label>
+            <select className="select" value={guiaForm.despacho_id}
+              disabled={!guiaForm.operacion_id}
+              onChange={e => {
+                const d = despachosList.find(x => x.id === e.target.value)
+                setGuiaForm(g => ({
+                  ...g,
+                  despacho_id: e.target.value,
+                  ...(d ? {
+                    distrito_destino: d.distrito_despacho ?? g.distrito_destino,
+                    fecha_despacho: d.fecha_despacho ?? g.fecha_despacho,
+                  } : {}),
+                }))
+              }} style={{ width: '100%' }}>
               <option value="">— Sin despacho —</option>
-              {despachosList.map(d => (
-                <option key={d.id} value={d.id}>
-                  {d.codigo_comercial} — {d.descripcion}{d.fecha_despacho ? ` (${fmtDate(d.fecha_despacho)})` : ''}
-                </option>
-              ))}
+              {despachosList
+                .filter(d => d.operacion_id === guiaForm.operacion_id)
+                .map(d => (
+                  <option key={d.id} value={d.id}>
+                    {d.codigo_comercial} — {d.descripcion}{d.fecha_despacho ? ` (${fmtDate(d.fecha_despacho)})` : ''}
+                  </option>
+                ))}
             </select>
           </div>
           <div className="form-field">
@@ -402,12 +474,12 @@ export function GuiasDespachos() {
       </Modal>
 
       {/* Modal confirmación */}
-      <Modal open={showConf} onClose={() => { setShowConf(false); setConfForm(defaultConf); setErrorConf(null) }}
+      <Modal open={showConf} onClose={() => { setShowConf(false); setConfForm(defaultConf); setErrorConf(null); setConfDespSearch('') }}
         title="Registrar confirmación de entrega" size="sm"
         footer={
           <>
-            <button className="btn" onClick={() => { setShowConf(false); setConfForm(defaultConf); setErrorConf(null) }}>Cancelar</button>
-            <button className="btn primary" onClick={handleGuardarConf} disabled={savingConf || !confForm.despacho_id}>
+            <button className="btn" onClick={() => { setShowConf(false); setConfForm(defaultConf); setErrorConf(null); setConfDespSearch('') }}>Cancelar</button>
+            <button className="btn primary" onClick={handleGuardarConf} disabled={savingConf}>
               {savingConf ? 'Guardando…' : 'Registrar'}
             </button>
           </>
@@ -417,14 +489,50 @@ export function GuiasDespachos() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div className="form-field">
             <label className="form-label">Despacho *</label>
-            <select className="select" value={confForm.despacho_id} onChange={e => setConfForm(c => ({ ...c, despacho_id: e.target.value }))} style={{ width: '100%' }}>
-              <option value="">— Seleccionar despacho —</option>
-              {despachosList.map(d => (
-                <option key={d.id} value={d.id}>
-                  {d.codigo_comercial} — {d.descripcion}{d.fecha_despacho ? ` (${fmtDate(d.fecha_despacho)})` : ''}
-                </option>
-              ))}
-            </select>
+            <div style={{ position: 'relative' }} ref={confDespDropRef}>
+              <input
+                className="input"
+                value={confDespSearch}
+                onChange={e => {
+                  setConfDespSearch(e.target.value)
+                  setShowConfDespDrop(true)
+                  if (!e.target.value) setConfForm(c => ({ ...c, despacho_id: '' }))
+                }}
+                onFocus={() => setShowConfDespDrop(true)}
+                placeholder="Buscar por código o descripción…"
+                style={{ width: '100%' }}
+                autoComplete="off"
+              />
+              {showConfDespDrop && (() => {
+                const q = confDespSearch.toLowerCase()
+                const filtered = q
+                  ? despachosList.filter(d =>
+                      d.codigo_comercial?.toLowerCase().includes(q) ||
+                      d.descripcion?.toLowerCase().includes(q)
+                    )
+                  : despachosList
+                return filtered.length > 0 ? (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 4px 16px rgba(0,0,0,.18)', maxHeight: 220, overflowY: 'auto', marginTop: 2 }}>
+                    {filtered.map(d => (
+                      <div key={d.id}
+                        style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5, borderBottom: '1px solid var(--border)' }}
+                        onMouseDown={() => {
+                          setConfDespSearch(`${d.codigo_comercial} — ${d.descripcion}`)
+                          setConfForm(c => ({ ...c, despacho_id: d.id }))
+                          setShowConfDespDrop(false)
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--panel-2)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        <span className="mono" style={{ color: 'var(--accent-2)', fontWeight: 600 }}>{d.codigo_comercial}</span>
+                        <span className="muted" style={{ marginLeft: 8 }}>{d.descripcion}</span>
+                        {d.fecha_despacho && <span className="mono muted" style={{ marginLeft: 8, fontSize: 11 }}>{fmtDate(d.fecha_despacho)}</span>}
+                      </div>
+                    ))}
+                  </div>
+                ) : null
+              })()}
+            </div>
           </div>
           <div className="form-field">
             <label className="form-label">Fecha confirmación *</label>

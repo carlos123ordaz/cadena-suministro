@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { Modal, DataTable, Icon, ProveedorCombobox, ImportacionCombobox, UploadDocumentoModal } from '@/components/ui'
 import type { Column, ProveedorOption, ImportacionOption } from '@/components/ui'
 import { supabase } from '@/lib/supabase'
+import { fmtDbError } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 import { AgregarItemOciModal } from './AgregarItemOciModal'
 
@@ -71,7 +72,7 @@ export function OciDetailModal({ ociId, onClose, onChanged }: Props) {
         proveedor:proveedores(id, razon_social),
         importacion:importaciones(id, grupo_importacion),
         operacion:operaciones(id, correlativo_opci),
-        items:orden_compra_items(*),
+        items:orden_compra_items(*, operacion:operaciones(id, correlativo_opci)),
         notas_lista:ordenes_compra_notas(*, usuario:profiles(nombre_completo))
       `)
       .eq('id', id)
@@ -132,7 +133,7 @@ export function OciDetailModal({ ociId, onClose, onChanged }: Props) {
       updated_at: new Date().toISOString(),
     }).eq('id', oci.id as string)
     setSavingEdit(false)
-    if (error) { setEditError((error as Error).message ?? 'Error al actualizar.'); return }
+    if (error) { setEditError(fmtDbError(error, 'Error al actualizar.')); return }
     setEditMode(false)
     load(ociId!)
     onChanged?.()
@@ -175,7 +176,7 @@ export function OciDetailModal({ ociId, onClose, onChanged }: Props) {
       num_item_invoice: editItemForm.num_item_invoice || null,
     }).eq('id', editItemId)
     setSavingItem(false)
-    if (error) { setItemError((error as Error).message ?? 'Error al guardar.'); return }
+    if (error) { setItemError(fmtDbError(error, 'Error al guardar.')); return }
     setEditItemId(null)
     if (ociId) load(ociId)
     onChanged?.()
@@ -213,6 +214,13 @@ export function OciDetailModal({ ociId, onClose, onChanged }: Props) {
       render: r => r.item_op
         ? <span className="mono" style={{ color: 'var(--accent-2)', fontWeight: 600, fontSize: 11 }}>{r.item_op as string}</span>
         : <span style={{ color: 'var(--text-3)', fontSize: 11 }}>—</span> },
+    { key: 'operacion',        label: 'OPCI',      width: 110,
+      render: r => {
+        const op = r.operacion as { correlativo_opci?: string } | undefined
+        return op?.correlativo_opci
+          ? <span className="mono" style={{ color: 'var(--accent-2)', fontSize: 11 }}>{op.correlativo_opci}</span>
+          : <span className="muted" style={{ fontSize: 11 }}>—</span>
+      }},
     { key: 'codigo_comercial', label: 'Código',    render: r => <span className="mono">{r.codigo_comercial as string ?? '—'}</span> },
     { key: 'descripcion',      label: 'Descripción' },
     { key: 'cantidad',         label: 'Cant.',     align: 'right', render: r => <span className="mono">{r.cantidad as number}</span> },

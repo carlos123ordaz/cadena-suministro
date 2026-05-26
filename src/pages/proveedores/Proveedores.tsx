@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { Icon, Card, DataTable, Modal, Badge } from '@/components/ui'
 import type { Column } from '@/components/ui'
 import { getProveedores, createProveedor, updateProveedor } from '@/services/proveedores.service'
 import type { Proveedor, TipoProveedor } from '@/types'
+import { downloadCsv } from '@/lib/export'
 
 interface ProvForm { ruc_nro_doc: string; razon_social: string; tipo: TipoProveedor; pais: string; ciudad: string; contacto_nombre: string; contacto_email: string; moneda_habitual: string; activo: boolean }
 const defaultForm: ProvForm = { ruc_nro_doc: '', razon_social: '', tipo: 'Local', pais: 'Perú', ciudad: '', contacto_nombre: '', contacto_email: '', moneda_habitual: 'USD', activo: true }
@@ -16,6 +17,20 @@ export function Proveedores() {
   const [editing, setEditing] = useState<Proveedor | null>(null)
   const [form, setForm] = useState<ProvForm>(defaultForm)
   const [saving, setSaving] = useState(false)
+
+  function handleExport() {
+    downloadCsv(`proveedores_${new Date().toISOString().slice(0,10)}`, proveedores.map(p => ({
+      'RUC / Doc.': p.ruc_nro_doc ?? '',
+      'Razón Social': p.razon_social,
+      'Tipo': p.tipo ?? '',
+      'País': p.pais ?? '',
+      'Ciudad': p.ciudad ?? '',
+      'Contacto': p.contacto_nombre ?? '',
+      'Email': p.contacto_email ?? '',
+      'Moneda Habitual': p.moneda_habitual ?? '',
+      'Activo': p.activo ? 'Sí' : 'No',
+    })))
+  }
 
   async function load() {
     setLoading(true)
@@ -83,7 +98,7 @@ export function Proveedores() {
             <option value="Importacion">Importación</option>
           </select>
           <div className="spacer" />
-          <button className="btn sm"><Icon name="download" size={13} /> Exportar</button>
+          <button className="btn sm" onClick={handleExport}><Icon name="download" size={13} /> Exportar</button>
         </div>
         <DataTable columns={columns as unknown as Column<Record<string, unknown>>[]} rows={proveedores as unknown as Record<string, unknown>[]} idKey="id" loading={loading} emptyMessage="Sin proveedores registrados" />
       </Card>

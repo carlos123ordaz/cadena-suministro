@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+﻿import { useState, useEffect, useRef } from 'react'
 import { Modal, Icon } from '@/components/ui'
 import { getClientes } from '@/services/clientes.service'
 import { getProveedores } from '@/services/proveedores.service'
 import { createOperacion } from '@/services/operaciones.service'
 import { getNextCorrelativoOPCI } from '@/services/configuracion.service'
 import { supabase } from '@/lib/supabase'
-import { money } from '@/lib/utils'
+import { money, fmtDbError } from '@/lib/utils'
 import type { Cliente, Proveedor, EstadoOPCI, Currency } from '@/types'
 
 const FORMAS_PAGO = [
@@ -216,7 +216,7 @@ export function CreateOperacion({ open, onClose, onCreated }: Props) {
     })
     setSaving(false)
     if (err || !data) {
-      setError((err as Error)?.message ?? 'Error al crear la operación.')
+      setError(fmtDbError(err, 'Error al crear la operación.'))
       return
     }
     onCreated(data.id, data.correlativo_opci)

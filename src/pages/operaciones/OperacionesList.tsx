@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon, Card, DataTable, StatusBadge, OPCI_STATUS_TONE, EtaCell, Badge, Modal } from '@/components/ui'
 import type { Column } from '@/components/ui'
 import { getOperaciones } from '@/services/operaciones.service'
 import { getClientes } from '@/services/clientes.service'
 import { supabase } from '@/lib/supabase'
-import { money, fmtDate, initials } from '@/lib/utils'
+import { money, fmtDate, initials, fmtDbError } from '@/lib/utils'
+import { downloadCsv } from '@/lib/export'
 import type { Operacion, Cliente, EstadoOPCI } from '@/types'
 
 const ESTADOS: EstadoOPCI[] = [
@@ -39,6 +40,7 @@ export function OperacionesList({ onCreateNew }: Props) {
   const [deleteRow, setDeleteRow] = useState<Operacion | null>(null)
   const [deletingRow, setDeletingRow] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -90,6 +92,35 @@ export function OperacionesList({ onCreateNew }: Props) {
     }
     setDeleteRow(null)
     load()
+  }
+
+  async function handleExport() {
+    setExporting(true)
+    let query = supabase
+      .from('operaciones')
+      .select('correlativo_opci, numero_op, estado, fecha_recepcion, nombre_proyecto, forma_pago, cliente:clientes(razon_social), items:operacion_items(item_op, codigo_comercial, descripcion, cantidad, unidad_medida, estado)')
+      .order('fecha_recepcion', { ascending: false })
+    if (q) query = (query as typeof query).or(`correlativo_opci.ilike.%${q}%,nombre_proyecto.ilike.%${q}%`)
+    if (estado) query = (query as typeof query).eq('estado', estado)
+    if (clienteId) query = (query as typeof query).eq('cliente_id', clienteId)
+    if (fechaDesde) query = (query as typeof query).gte('fecha_recepcion', fechaDesde)
+    if (fechaHasta) query = (query as typeof query).lte('fecha_recepcion', fechaHasta)
+    const { data } = await query
+    type Item = { item_op?: string; codigo_comercial?: string; descripcion?: string; cantidad?: number; unidad_medida?: string; estado?: string }
+    type Op = { correlativo_opci: string; numero_op?: string; estado: string; fecha_recepcion?: string; nombre_proyecto?: string; forma_pago?: string; cliente?: { razon_social: string }; items?: Item[] }
+    const rows = (data as unknown as Op[] ?? []).flatMap(op => {
+      const base = {
+        'Correlativo OPCI': op.correlativo_opci, 'N° OP': op.numero_op ?? '',
+        'Estado': op.estado, 'Fecha Recepción': op.fecha_recepcion ?? '',
+        'Proyecto': op.nombre_proyecto ?? '', 'Forma de Pago': op.forma_pago ?? '',
+        'Cliente': op.cliente?.razon_social ?? '',
+      }
+      const items = op.items ?? []
+      if (!items.length) return [{ ...base, 'Ítem OP': '', 'Código': '', 'Descripción': '', 'Cantidad': '', 'UM': '', 'Estado Ítem': '' }]
+      return items.map(i => ({ ...base, 'Ítem OP': i.item_op ?? '', 'Código': i.codigo_comercial ?? '', 'Descripción': i.descripcion ?? '', 'Cantidad': i.cantidad ?? '', 'UM': i.unidad_medida ?? '', 'Estado Ítem': i.estado ?? '' }))
+    })
+    downloadCsv(`operaciones_${new Date().toISOString().slice(0, 10)}`, rows)
+    setExporting(false)
   }
 
   const columns: Column<Operacion>[] = [
@@ -175,7 +206,7 @@ export function OperacionesList({ onCreateNew }: Props) {
           <div className="page-sub">Gestión centralizada del ciclo comercial por operación</div>
         </div>
         <div className="page-actions">
-          <button className="btn sm"><Icon name="download" size={13} /> Exportar</button>
+          <button className="btn sm" onClick={handleExport} disabled={exporting}><Icon name="download" size={13} /> {exporting ? 'Exportando…' : 'Exportar'}</button>
           <button className="btn primary sm" onClick={onCreateNew}>
             <Icon name="plus" size={13} /> Nueva OPCI
           </button>

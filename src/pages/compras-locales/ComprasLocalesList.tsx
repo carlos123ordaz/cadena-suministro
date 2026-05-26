@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+﻿import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Icon,
@@ -18,7 +18,8 @@ import { ProveedorCombobox } from '@/components/ui'
 import type { ProveedorOption } from '@/components/ui'
 import { supabase } from '@/lib/supabase'
 import type { OrdenCompraLocal, EstadoOCL } from '@/types'
-import { money, truncate } from '@/lib/utils'
+import { money, truncate, fmtDbError } from '@/lib/utils'
+import { downloadCsv } from '@/lib/export'
 
 const FORMAS_PAGO_COMBO = [
   'Contado',
@@ -128,6 +129,7 @@ export function ComprasLocalesList() {
   })
   const [createSaving, setCreateSaving] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
 
   // ── Create OC ─────────────────────────────────────────────────────────
   async function handleCreateOCL() {
@@ -153,7 +155,7 @@ export function ComprasLocalesList() {
     )
     setCreateSaving(false)
     if (error) {
-      setCreateError((error as Error)?.message ?? 'Error al crear la OC.')
+      setCreateError(fmtDbError(error, 'Error al crear la OC.'))
       return
     }
     setShowCreate(false)
@@ -174,6 +176,32 @@ export function ComprasLocalesList() {
     }
   }
 
+  async function handleExport() {
+    setExporting(true)
+    let query = supabase
+      .from('ordenes_compra')
+      .select('num_oc, status, fecha_oc, forma_pago, moneda, proveedor:proveedores(razon_social), items:orden_compra_items(item_oc, item_op, codigo_comercial, descripcion, cantidad, unidad_medida, pcu1, monto_total, operacion:operaciones(correlativo_opci))')
+      .eq('tipo', 'Local')
+      .order('created_at', { ascending: false })
+    if (search) query = (query as typeof query).ilike('num_oc', `%${search}%`)
+    if (filterEstado) query = (query as typeof query).eq('status', filterEstado)
+    const { data } = await query
+    type Item = { item_oc?: string; item_op?: string; codigo_comercial?: string; descripcion?: string; cantidad?: number; unidad_medida?: string; pcu1?: number; monto_total?: number; operacion?: { correlativo_opci: string } }
+    type OC = { num_oc: string; status: string; fecha_oc?: string; forma_pago?: string; moneda?: string; proveedor?: { razon_social: string }; items?: Item[] }
+    const rows = (data as unknown as OC[] ?? []).flatMap(oc => {
+      const base = {
+        'N° OC': oc.num_oc, 'Proveedor': oc.proveedor?.razon_social ?? '',
+        'Estado': oc.status, 'Fecha OC': oc.fecha_oc ?? '',
+        'Forma de Pago': oc.forma_pago ?? '', 'Moneda': oc.moneda ?? '',
+      }
+      const items = oc.items ?? []
+      if (!items.length) return [{ ...base, 'OPCI': '', 'Ítem OC': '', 'Ítem OP': '', 'Código': '', 'Descripción': '', 'Cantidad': '', 'UM': '', 'P.U.': '', 'Total': '' }]
+      return items.map(i => ({ ...base, 'OPCI': i.operacion?.correlativo_opci ?? '', 'Ítem OC': i.item_oc ?? '', 'Ítem OP': i.item_op ?? '', 'Código': i.codigo_comercial ?? '', 'Descripción': i.descripcion ?? '', 'Cantidad': i.cantidad ?? '', 'UM': i.unidad_medida ?? '', 'P.U.': i.pcu1 ?? '', 'Total': i.monto_total ?? '' }))
+    })
+    downloadCsv(`compras_locales_${new Date().toISOString().slice(0, 10)}`, rows)
+    setExporting(false)
+  }
+
   // ── Load list ─────────────────────────────────────────────────────────
   async function loadList() {
     setLoading(true)
@@ -190,6 +218,16 @@ export function ComprasLocalesList() {
     loadList()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, filterEstado])
+
+  useEffect(() => {
+    if (!showCreate) return
+    supabase.from('ordenes_compra')
+      .select('num_oc').eq('tipo', 'Local')
+      .order('created_at', { ascending: false }).limit(1)
+      .then(({ data }) => {
+        if (data?.[0]?.num_oc) setCreateForm(f => ({ ...f, num_oc: data[0].num_oc }))
+      })
+  }, [showCreate])
 
   // ── Filtered rows (proveedor filter is client-side) ──────────────────
   const filtered = useMemo(() => {
@@ -333,6 +371,7 @@ export function ComprasLocalesList() {
           <Badge tone="muted">{total}</Badge>
         </div>
         <div className="page-actions">
+          <button className="btn sm" onClick={handleExport} disabled={exporting}><Icon name="download" size={13} /> {exporting ? 'Exportando…' : 'Exportar'}</button>
           <button className="btn primary sm" onClick={() => setShowCreate(true)}>
             <Icon name="plus" size={13} />
             Nueva OC

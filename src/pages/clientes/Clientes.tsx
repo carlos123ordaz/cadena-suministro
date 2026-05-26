@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { Icon, Card, DataTable, Modal, Drawer, MetaGrid, Badge } from '@/components/ui'
 import type { Column } from '@/components/ui'
 import { getClientes, createCliente, updateCliente } from '@/services/clientes.service'
 import type { Cliente } from '@/types'
+import { downloadCsv } from '@/lib/export'
 
 interface ClienteForm { ruc: string; razon_social: string; nombre_comercial: string; ciudad: string; sector: string; contacto_nombre: string; contacto_email: string; contacto_telefono: string; activo: boolean }
 const defaultForm: ClienteForm = { ruc: '', razon_social: '', nombre_comercial: '', ciudad: '', sector: '', contacto_nombre: '', contacto_email: '', contacto_telefono: '', activo: true }
@@ -28,6 +29,20 @@ export function Clientes() {
 
   function openCreate() { setEditing(null); setForm(defaultForm); setShowModal(true) }
   function openEdit(c: Cliente) { setEditing(c); setForm({ ruc: c.ruc ?? '', razon_social: c.razon_social, nombre_comercial: c.nombre_comercial ?? '', ciudad: c.ciudad ?? '', sector: c.sector ?? '', contacto_nombre: c.contacto_nombre ?? '', contacto_email: c.contacto_email ?? '', contacto_telefono: c.contacto_telefono ?? '', activo: c.activo }); setShowModal(true) }
+
+  function handleExport() {
+    downloadCsv(`clientes_${new Date().toISOString().slice(0,10)}`, clientes.map(c => ({
+      'RUC': c.ruc ?? '',
+      'Razón Social': c.razon_social,
+      'Nombre Comercial': c.nombre_comercial ?? '',
+      'Ciudad': c.ciudad ?? '',
+      'Sector': c.sector ?? '',
+      'Contacto': c.contacto_nombre ?? '',
+      'Email': c.contacto_email ?? '',
+      'Teléfono': c.contacto_telefono ?? '',
+      'Activo': c.activo ? 'Sí' : 'No',
+    })))
+  }
 
   async function handleSave() {
     if (!form.razon_social) return
@@ -73,7 +88,7 @@ export function Clientes() {
             <input className="input with-ico" placeholder="Razón social, RUC…" value={q} onChange={e => setQ(e.target.value)} style={{ width: 260 }} />
           </div>
           <div className="spacer" />
-          <button className="btn sm"><Icon name="download" size={13} /> Exportar</button>
+          <button className="btn sm" onClick={handleExport}><Icon name="download" size={13} /> Exportar</button>
         </div>
         <DataTable columns={columns as unknown as Column<Record<string, unknown>>[]} rows={clientes as unknown as Record<string, unknown>[]} idKey="id" loading={loading} onRowClick={r => setSelected(r as unknown as Cliente)} emptyMessage="Sin clientes registrados" />
       </Card>
