@@ -34,6 +34,7 @@ export function Facturacion() {
   const [showPago, setShowPago] = useState(false)
   const [pagoForm, setPagoForm] = useState<PagoForm>(defaultPago)
   const [savingPago, setSavingPago] = useState(false)
+  const [errorPago, setErrorPago] = useState<string | null>(null)
 
   const [showNueva, setShowNueva] = useState(false)
   const [opciSearch, setOpciSearch] = useState('')
@@ -209,9 +210,11 @@ export function Facturacion() {
   }
 
   async function handlePago() {
-    if (!selected || !pagoForm.monto) return
+    if (!selected) { setErrorPago('Error de sesión. Recarga la página.'); return }
+    if (!pagoForm.monto || parseFloat(pagoForm.monto) <= 0) { setErrorPago('Ingresa un monto válido mayor a 0.'); return }
     setSavingPago(true)
-    await registrarPago(selected.id, {
+    setErrorPago(null)
+    const { error } = await registrarPago(selected.id, {
       fecha_pago: pagoForm.fecha_pago,
       monto: parseFloat(pagoForm.monto),
       moneda: pagoForm.moneda,
@@ -219,10 +222,10 @@ export function Facturacion() {
       entidad_financiera: pagoForm.entidad_financiera || undefined,
     } as unknown as Omit<PagoFactura, 'id' | 'factura_id' | 'created_at'>)
     setSavingPago(false)
+    if (error) { setErrorPago((error as Error)?.message ?? 'Error al registrar pago.'); return }
     setShowPago(false)
     setPagoForm(defaultPago)
     load()
-    // refresh drawer
     const { data } = await getFactura(selected.id)
     setSelected(data as FacturaConPagos | null)
   }
@@ -476,16 +479,17 @@ export function Facturacion() {
       </Modal>
 
       {/* Modal registrar pago */}
-      <Modal open={showPago} onClose={() => { setShowPago(false); setPagoForm(defaultPago) }}
+      <Modal open={showPago} onClose={() => { setShowPago(false); setPagoForm(defaultPago); setErrorPago(null) }}
         title="Registrar pago" subtitle={selected?.num_factura} size="sm"
         footer={
           <>
-            <button className="btn" onClick={() => setShowPago(false)}>Cancelar</button>
+            <button className="btn" onClick={() => { setShowPago(false); setPagoForm(defaultPago); setErrorPago(null) }}>Cancelar</button>
             <button className="btn primary" onClick={handlePago} disabled={savingPago || !pagoForm.monto}>
               {savingPago ? 'Guardando…' : 'Registrar pago'}
             </button>
           </>
         }>
+        {errorPago && <div style={{ background: 'var(--bad-soft)', border: '1px solid var(--bad)', borderRadius: 6, padding: '8px 12px', fontSize: 12.5, color: 'var(--bad)', marginBottom: 12 }}>{errorPago}</div>}
         {selected && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ background: 'var(--warn-soft)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 12px', fontSize: 12.5 }}>

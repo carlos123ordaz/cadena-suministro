@@ -192,6 +192,7 @@ export function Almacen() {
   const [showDesp, setShowDesp] = useState(false)
   const [despForm, setDespForm] = useState<DespachoForm>(defaultDesp)
   const [savingDesp, setSavingDesp] = useState(false)
+  const [despError, setDespError] = useState<string | null>(null)
 
   // Despacho — product search
   const [despProdSearch, setDespProdSearch] = useState('')
@@ -215,6 +216,7 @@ export function Almacen() {
     distrito_destino: '', direccion_destino: '', observaciones: '',
   })
   const [savingGuiaRapida, setSavingGuiaRapida] = useState(false)
+  const [guiaRapidaError, setGuiaRapidaError] = useState<string | null>(null)
 
   const [kardexCodigo, setKardexCodigo] = useState('')
 
@@ -383,7 +385,7 @@ export function Almacen() {
 
   // ── Registrar recepción ───────────────────────────────────────────────
   async function handleRegistrarRecepcion() {
-    if (!profile) return
+    if (!profile) { setRecError('Error de sesión. Recarga la página.'); return }
     if (!recHeader.almacen_id) { setRecError('Selecciona un almacén.'); return }
     if (recItems.length === 0) { setRecError('Selecciona una OC para cargar los ítems.'); return }
 
@@ -446,10 +448,14 @@ export function Almacen() {
 
   // ── Registrar despacho ────────────────────────────────────────────────
   async function handleRegistrarDespacho() {
-    if (!profile) return
-    if (!despForm.almacen_id) return
+    if (!profile) { setDespError('Error de sesión. Recarga la página.'); return }
+    if (!despForm.almacen_id) { setDespError('Selecciona un almacén.'); return }
+    if (!despForm.operacion_id) { setDespError('Selecciona una OPCI.'); return }
+    if (!despForm.codigo_comercial) { setDespError('Ingresa el código del producto.'); return }
+    if (!despForm.cantidad || parseFloat(despForm.cantidad) <= 0) { setDespError('Ingresa una cantidad válida mayor a 0.'); return }
     setSavingDesp(true)
-    const { data: despachoCreado } = await registrarDespacho(
+    setDespError(null)
+    const { data: despachoCreado, error: despErr } = await registrarDespacho(
       {
         almacen_id: despForm.almacen_id,
         operacion_id: despForm.operacion_id || undefined,
@@ -466,6 +472,7 @@ export function Almacen() {
       profile.id,
     )
     setSavingDesp(false)
+    if (despErr) { setDespError((despErr as Error)?.message ?? 'Error al registrar despacho.'); return }
     setShowDesp(false)
     resetDesp()
     loadTab()
@@ -482,9 +489,11 @@ export function Almacen() {
   }
 
   async function handleGuardarGuiaRapida() {
-    if (!profile || !guiaRapidaForm.numero_guia) return
+    if (!profile) { setGuiaRapidaError('Error de sesión. Recarga la página.'); return }
+    if (!guiaRapidaForm.numero_guia) { setGuiaRapidaError('El número de guía es obligatorio.'); return }
     setSavingGuiaRapida(true)
-    await supabase.from('guias_remision').insert({
+    setGuiaRapidaError(null)
+    const { error: guiaErr } = await supabase.from('guias_remision').insert({
       despacho_id:      guiaRapidaDespachoId || null,
       operacion_id:     guiaRapidaOpciId || null,
       numero_guia:      guiaRapidaForm.numero_guia,
@@ -500,6 +509,7 @@ export function Almacen() {
       usuario_id: profile.id,
     })
     setSavingGuiaRapida(false)
+    if (guiaErr) { setGuiaRapidaError((guiaErr as Error)?.message ?? 'Error al emitir guía.'); return }
     setShowGuiaRapida(false)
     setGuiaRapidaDespachoId('')
     setGuiaRapidaOpciId('')
@@ -859,7 +869,7 @@ export function Almacen() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
                 <thead>
                   <tr style={{ background: 'var(--panel-2)', borderBottom: '1px solid var(--border)' }}>
-                    {['Item OC', 'Código', 'Descripción', 'UM', 'Cant. OC', 'Cant. recibida *'].map(h => (
+                    {['Item OC', 'Código', 'Descripción', 'UM', 'Cant. OC', 'Cant. recibida *', ''].map(h => (
                       <th key={h} style={{ padding: '7px 10px', textAlign: h.startsWith('Cant') ? 'right' : 'left', color: 'var(--text-3)', fontWeight: 500, whiteSpace: 'nowrap' }}>
                         {h}
                       </th>
@@ -899,6 +909,19 @@ export function Almacen() {
                           }
                         />
                       </td>
+                      <td style={{ padding: '6px 10px', textAlign: 'center' }}>
+                        <button
+                          title="Quitar ítem"
+                          onClick={() => setRecItems(prev => prev.filter((_, i) => i !== idx))}
+                          style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            color: 'var(--text-3)', padding: '2px 6px', borderRadius: 4,
+                            lineHeight: 1, fontSize: 15,
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.color = 'var(--danger)')}
+                          onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-3)')}
+                        >✕</button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -911,18 +934,19 @@ export function Almacen() {
       {/* ── Modal: Registrar despacho ──────────────────────────────────── */}
       <Modal
         open={showDesp}
-        onClose={() => { setShowDesp(false); resetDesp() }}
+        onClose={() => { setShowDesp(false); resetDesp(); setDespError(null) }}
         title="Registrar despacho"
         size="md"
         footer={
           <>
-            <button className="btn" onClick={() => { setShowDesp(false); resetDesp() }}>Cancelar</button>
+            <button className="btn" onClick={() => { setShowDesp(false); resetDesp(); setDespError(null) }}>Cancelar</button>
             <button className="btn primary" onClick={handleRegistrarDespacho} disabled={savingDesp || !despForm.almacen_id || !despForm.operacion_id || !despForm.codigo_comercial || !despForm.cantidad}>
               {savingDesp ? 'Guardando…' : 'Registrar despacho'}
             </button>
           </>
         }
       >
+        {despError && <div style={{ background: 'var(--bad-soft)', border: '1px solid var(--bad)', borderRadius: 6, padding: '8px 12px', fontSize: 12.5, color: 'var(--bad)', marginBottom: 12 }}>{despError}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
 
           {/* Almacén */}
@@ -1184,7 +1208,7 @@ export function Almacen() {
       {/* ── Modal: Guía de remisión rápida (post-despacho) ─────────────── */}
       <Modal
         open={showGuiaRapida}
-        onClose={() => setShowGuiaRapida(false)}
+        onClose={() => { setShowGuiaRapida(false); setGuiaRapidaError(null) }}
         title="¿Emitir guía de remisión?"
         size="md"
         footer={
@@ -1196,6 +1220,7 @@ export function Almacen() {
           </>
         }
       >
+        {guiaRapidaError && <div style={{ background: 'var(--bad-soft)', border: '1px solid var(--bad)', borderRadius: 6, padding: '8px 12px', fontSize: 12.5, color: 'var(--bad)', marginBottom: 12 }}>{guiaRapidaError}</div>}
         <div style={{ background: 'var(--accent-soft)', borderRadius: 6, padding: '8px 12px', fontSize: 12.5, marginBottom: 14 }}>
           El despacho fue registrado. Completa los datos del transporte para emitir la guía de remisión ahora, o hazlo más tarde desde <strong>Guías y Despachos</strong>.
         </div>

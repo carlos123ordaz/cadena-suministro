@@ -65,12 +65,14 @@ export function GuiasDespachos() {
   const [showGuia, setShowGuia] = useState(false)
   const [guiaForm, setGuiaForm] = useState<GuiaForm>(defaultGuia)
   const [savingGuia, setSavingGuia] = useState(false)
+  const [errorGuia, setErrorGuia] = useState<string | null>(null)
   const [opciList, setOpciList] = useState<OpciItem[]>([])
   const [despachosList, setDespachosList] = useState<DespachoItem[]>([])
 
   const [showConf, setShowConf] = useState(false)
   const [confForm, setConfForm] = useState<ConfForm>(defaultConf)
   const [savingConf, setSavingConf] = useState(false)
+  const [errorConf, setErrorConf] = useState<string | null>(null)
 
   // Estado change — Guía
   const [showEstadoGuia, setShowEstadoGuia] = useState(false)
@@ -130,9 +132,11 @@ export function GuiasDespachos() {
   }, [showConf])
 
   async function handleGuardarGuia() {
-    if (!profile || !guiaForm.numero_guia) return
+    if (!profile) { setErrorGuia('Error de sesión. Recarga la página.'); return }
+    if (!guiaForm.numero_guia) { setErrorGuia('El número de guía es obligatorio.'); return }
     setSavingGuia(true)
-    await supabase.from('guias_remision').insert({
+    setErrorGuia(null)
+    const { error } = await supabase.from('guias_remision').insert({
       operacion_id:    guiaForm.operacion_id    || null,
       despacho_id:     guiaForm.despacho_id     || null,
       numero_guia:     guiaForm.numero_guia,
@@ -148,15 +152,19 @@ export function GuiasDespachos() {
       usuario_id: profile.id,
     })
     setSavingGuia(false)
+    if (error) { setErrorGuia((error as Error)?.message ?? 'Error al guardar la guía.'); return }
     setShowGuia(false)
     setGuiaForm(defaultGuia)
     loadTab()
   }
 
   async function handleGuardarConf() {
-    if (!profile || !confForm.fecha_confirmacion) return
+    if (!profile) { setErrorConf('Error de sesión. Recarga la página.'); return }
+    if (!confForm.despacho_id) { setErrorConf('Selecciona un despacho.'); return }
+    if (!confForm.fecha_confirmacion) { setErrorConf('La fecha de confirmación es obligatoria.'); return }
     setSavingConf(true)
-    await supabase.from('confirmaciones_entrega').insert({
+    setErrorConf(null)
+    const { error } = await supabase.from('confirmaciones_entrega').insert({
       despacho_id:       confForm.despacho_id || null,
       fecha_confirmacion: confForm.fecha_confirmacion,
       recibido_por:      confForm.recibido_por || null,
@@ -165,6 +173,7 @@ export function GuiasDespachos() {
       usuario_id: profile.id,
     })
     setSavingConf(false)
+    if (error) { setErrorConf((error as Error)?.message ?? 'Error al registrar confirmación.'); return }
     setShowConf(false)
     setConfForm(defaultConf)
     loadTab()
@@ -311,17 +320,18 @@ export function GuiasDespachos() {
       )}
 
       {/* Modal nueva guía */}
-      <Modal open={showGuia} onClose={() => { setShowGuia(false); setGuiaForm(defaultGuia) }}
+      <Modal open={showGuia} onClose={() => { setShowGuia(false); setGuiaForm(defaultGuia); setErrorGuia(null) }}
         title="Nueva guía de remisión" size="lg"
         footer={
           <>
-            <button className="btn" onClick={() => setShowGuia(false)}>Cancelar</button>
+            <button className="btn" onClick={() => { setShowGuia(false); setGuiaForm(defaultGuia); setErrorGuia(null) }}>Cancelar</button>
             <button className="btn primary" onClick={handleGuardarGuia} disabled={savingGuia || !guiaForm.numero_guia}>
               {savingGuia ? 'Guardando…' : 'Guardar guía'}
             </button>
           </>
         }
       >
+        {errorGuia && <div style={{ background: 'var(--bad-soft)', border: '1px solid var(--bad)', borderRadius: 6, padding: '8px 12px', fontSize: 12.5, color: 'var(--bad)', marginBottom: 12 }}>{errorGuia}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <div className="form-field">
             <label className="form-label">OPCI (opcional)</label>
@@ -392,17 +402,18 @@ export function GuiasDespachos() {
       </Modal>
 
       {/* Modal confirmación */}
-      <Modal open={showConf} onClose={() => { setShowConf(false); setConfForm(defaultConf) }}
+      <Modal open={showConf} onClose={() => { setShowConf(false); setConfForm(defaultConf); setErrorConf(null) }}
         title="Registrar confirmación de entrega" size="sm"
         footer={
           <>
-            <button className="btn" onClick={() => setShowConf(false)}>Cancelar</button>
+            <button className="btn" onClick={() => { setShowConf(false); setConfForm(defaultConf); setErrorConf(null) }}>Cancelar</button>
             <button className="btn primary" onClick={handleGuardarConf} disabled={savingConf || !confForm.despacho_id}>
               {savingConf ? 'Guardando…' : 'Registrar'}
             </button>
           </>
         }
       >
+        {errorConf && <div style={{ background: 'var(--bad-soft)', border: '1px solid var(--bad)', borderRadius: 6, padding: '8px 12px', fontSize: 12.5, color: 'var(--bad)', marginBottom: 12 }}>{errorConf}</div>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div className="form-field">
             <label className="form-label">Despacho *</label>
