@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon, Card, DataTable, StatusBadge, OPCI_STATUS_TONE, EtaCell, Badge, Modal } from '@/components/ui'
 import type { Column } from '@/components/ui'
@@ -33,6 +33,18 @@ export function OperacionesList({ onCreateNew }: Props) {
   const [clienteId, setClienteId] = useState('')
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
+
+  const [clienteSearch, setClienteSearch] = useState('')
+  const [clienteDropOpen, setClienteDropOpen] = useState(false)
+  const clienteRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (clienteRef.current && !clienteRef.current.contains(e.target as Node)) setClienteDropOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
 
   const [editRow, setEditRow] = useState<Operacion | null>(null)
   const [editForm, setEditForm] = useState({ estado: '' as EstadoOPCI | '', fecha_recepcion: '', numero_op: '', forma_pago: '' })
@@ -98,22 +110,29 @@ export function OperacionesList({ onCreateNew }: Props) {
     setExporting(true)
     let query = supabase
       .from('operaciones')
-      .select('correlativo_opci, numero_op, estado, fecha_recepcion, nombre_proyecto, forma_pago, cliente:clientes(razon_social), items:operacion_items(item_op, codigo_comercial, descripcion, cantidad, unidad_medida, estado)')
+      .select('correlativo_opci, numero_op, numero_referencia_cliente, estado, fecha_recepcion, forma_pago, moneda, monto_total_sin_igv, cliente:clientes!cliente_id(razon_social), items:operacion_items(item_op, codigo_comercial, descripcion, cantidad, unidad_medida, moneda, precio_unitario, monto_total, estado)')
       .order('fecha_recepcion', { ascending: false })
-    if (q) query = (query as typeof query).or(`correlativo_opci.ilike.%${q}%,nombre_proyecto.ilike.%${q}%`)
+    if (q) query = (query as typeof query).or(`correlativo_opci.ilike.%${q}%,numero_op.ilike.%${q}%,numero_referencia_cliente.ilike.%${q}%`)
     if (estado) query = (query as typeof query).eq('estado', estado)
     if (clienteId) query = (query as typeof query).eq('cliente_id', clienteId)
     if (fechaDesde) query = (query as typeof query).gte('fecha_recepcion', fechaDesde)
     if (fechaHasta) query = (query as typeof query).lte('fecha_recepcion', fechaHasta)
-    const { data } = await query
-    type Item = { item_op?: string; codigo_comercial?: string; descripcion?: string; cantidad?: number; unidad_medida?: string; estado?: string }
-    type Op = { correlativo_opci: string; numero_op?: string; estado: string; fecha_recepcion?: string; nombre_proyecto?: string; forma_pago?: string; cliente?: { razon_social: string }; items?: Item[] }
+    const { data, error } = await query
+    if (error) { console.error('Export error:', error); setExporting(false); return }
+    type Item = { item_op?: string; codigo_comercial?: string; descripcion?: string; cantidad?: number; unidad_medida?: string; moneda?: string; precio_unitario?: number; monto_total?: number; estado?: string }
+    type Op = { correlativo_opci: string; numero_op?: string; numero_referencia_cliente?: string; estado: string; fecha_recepcion?: string; forma_pago?: string; moneda?: string; monto_total_sin_igv?: number; cliente?: { razon_social: string } | { razon_social: string }[]; items?: Item[] }
     const rows = (data as unknown as Op[] ?? []).flatMap(op => {
+      const clienteNombre = Array.isArray(op.cliente) ? op.cliente[0]?.razon_social ?? '' : op.cliente?.razon_social ?? ''
       const base = {
-        'Correlativo OPCI': op.correlativo_opci, 'N° OP': op.numero_op ?? '',
-        'Estado': op.estado, 'Fecha Recepción': op.fecha_recepcion ?? '',
-        'Proyecto': op.nombre_proyecto ?? '', 'Forma de Pago': op.forma_pago ?? '',
-        'Cliente': op.cliente?.razon_social ?? '',
+        'Correlativo OPCI': op.correlativo_opci,
+        'N° OP': op.numero_op ?? '',
+        'N° Referencia': op.numero_referencia_cliente ?? '',
+        'Estado': op.estado,
+        'Fecha Recepción': op.fecha_recepcion ?? '',
+        'Forma de Pago': op.forma_pago ?? '',
+        'Moneda': op.moneda ?? '',
+        'Monto s/IGV': op.monto_total_sin_igv ?? '',
+        'Cliente': clienteNombre,
       }
       const items = op.items ?? []
       if (!items.length) return [{ ...base, 'Ítem OP': '', 'Código': '', 'Descripción': '', 'Cantidad': '', 'UM': '', 'Estado Ítem': '' }]
@@ -229,10 +248,51 @@ export function OperacionesList({ onCreateNew }: Props) {
             <option value="">Todos los estados</option>
             {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
-          <select className="select" value={clienteId} onChange={e => { setClienteId(e.target.value); setPage(1) }}>
-            <option value="">Todos los clientes</option>
-            {clientes.map(c => <option key={c.id} value={c.id}>{c.razon_social}</option>)}
-          </select>
+          <div ref={clienteRef} style={{ position: 'relative' }}>
+            <div className="input-wrap" style={{ width: 220 }}>
+              <Icon name="search" size={13} className="ico" />
+              <input
+                className="input with-ico"
+                placeholder={clienteId ? (clientes.find(c => c.id === clienteId)?.razon_social ?? 'Cliente') : 'Todos los clientes'}
+                value={clienteSearch}
+                onChange={e => { setClienteSearch(e.target.value); setClienteDropOpen(true) }}
+                onFocus={() => setClienteDropOpen(true)}
+                style={{ width: '100%', fontStyle: clienteId && !clienteSearch ? 'italic' : 'normal' }}
+              />
+              {clienteId && (
+                <button
+                  className="btn ghost xs"
+                  style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', padding: '0 4px' }}
+                  onMouseDown={e => { e.preventDefault(); setClienteId(''); setClienteSearch(''); setClienteDropOpen(false); setPage(1) }}
+                >
+                  <Icon name="x" size={10} />
+                </button>
+              )}
+            </div>
+            {clienteDropOpen && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 50, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: 'var(--shadow-3)', minWidth: 240, maxHeight: 220, overflowY: 'auto', marginTop: 2 }}>
+                <div
+                  className="combo-option"
+                  onMouseDown={() => { setClienteId(''); setClienteSearch(''); setClienteDropOpen(false); setPage(1) }}
+                  style={{ padding: '7px 12px', fontSize: 13, cursor: 'pointer', color: 'var(--text-3)' }}
+                >
+                  Todos los clientes
+                </div>
+                {clientes
+                  .filter(c => c.razon_social.toLowerCase().includes(clienteSearch.toLowerCase()))
+                  .map(c => (
+                    <div
+                      key={c.id}
+                      onMouseDown={() => { setClienteId(c.id); setClienteSearch(''); setClienteDropOpen(false); setPage(1) }}
+                      style={{ padding: '7px 12px', fontSize: 13, cursor: 'pointer', background: clienteId === c.id ? 'var(--accent-1-alpha)' : undefined }}
+                    >
+                      {c.razon_social}
+                    </div>
+                  ))
+                }
+              </div>
+            )}
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span className="tiny">Desde</span>
             <input type="date" className="input" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} style={{ width: 130 }} />
@@ -240,7 +300,7 @@ export function OperacionesList({ onCreateNew }: Props) {
             <input type="date" className="input" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} style={{ width: 130 }} />
           </div>
           <div className="spacer" />
-          <button className="btn ghost xs" onClick={() => { setQ(''); setEstado(''); setClienteId(''); setFechaDesde(''); setFechaHasta('') }}>
+          <button className="btn ghost xs" onClick={() => { setQ(''); setEstado(''); setClienteId(''); setClienteSearch(''); setFechaDesde(''); setFechaHasta('') }}>
             <Icon name="x" size={11} /> Limpiar
           </button>
         </div>

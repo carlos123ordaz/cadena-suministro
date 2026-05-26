@@ -47,14 +47,14 @@ async function loadDashboardAlerts(): Promise<Alert[]> {
       .from('facturas_venta')
       .select('id, num_factura, fecha_prometida_pago, operacion:operaciones(cliente:clientes!cliente_id(razon_social))')
       .lt('fecha_prometida_pago', today)
-      .not('status', 'in', '("Pagada total","Anulada")')
+      .not('status', 'in', `(Pagada total,Anulada)`)
       .order('fecha_prometida_pago', { ascending: true })
       .limit(5),
     supabase
       .from('ordenes_compra')
       .select('id, numero_oc, fecha_ofrecida, status')
       .lt('fecha_ofrecida', today)
-      .not('status', 'in', '("Recibido completo","Cerrado","Anulado")')
+      .not('status', 'in', `(Recibido completo,Cerrado,Anulado)`)
       .order('fecha_ofrecida', { ascending: true })
       .limit(3),
   ])
