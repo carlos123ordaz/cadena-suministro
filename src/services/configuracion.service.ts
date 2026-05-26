@@ -1,5 +1,15 @@
 import { supabase } from '@/lib/supabase'
 
+export async function getParametrosLista(tipo: string): Promise<string[]> {
+  const { data } = await supabase
+    .from('parametros_lista')
+    .select('valor')
+    .eq('tipo', tipo)
+    .eq('activo', true)
+    .order('orden')
+  return (data ?? []).map((r: { valor: string }) => r.valor)
+}
+
 export async function getAppConfig(clave: string): Promise<string | null> {
   const { data } = await supabase
     .from('app_configuracion')

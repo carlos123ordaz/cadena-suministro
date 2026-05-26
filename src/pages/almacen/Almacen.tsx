@@ -68,6 +68,10 @@ export function Almacen() {
   const [recError, setRecError] = useState<string | null>(null)
   const [almacenesList, setAlmacenesList] = useState<{ id: string; nombre: string; codigo: string }[]>([])
   const [ocList, setOcList] = useState<OCListItem[]>([])
+  const [ocSearch, setOcSearch] = useState('')
+  const [showOcDrop, setShowOcDrop] = useState(false)
+  const ocRef = useRef<HTMLDivElement>(null)
+  const ocSelectedRef = useRef('')
   const [recHeader, setRecHeader] = useState({
     almacen_id: '',
     orden_compra_id: '',
@@ -251,6 +255,17 @@ export function Almacen() {
       .then(({ data }) => setOcList((data ?? []) as unknown as OCListItem[]))
   }, [showRec])
 
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ocRef.current && !ocRef.current.contains(e.target as Node)) {
+        setShowOcDrop(false)
+        setOcSearch(ocSelectedRef.current)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
   // ── Load OC items when OC changes ─────────────────────────────────────
   useEffect(() => {
     const ocId = recHeader.orden_compra_id
@@ -423,6 +438,8 @@ export function Almacen() {
     setRecHeader({ almacen_id: '', orden_compra_id: '', fecha_recepcion: today, conf_almacen: 'Conforme', motivo_conf_almacen: '', erp_inta_entrada: '', notas: '' })
     setRecItems([])
     setRecError(null)
+    ocSelectedRef.current = ''
+    setOcSearch('')
   }
 
   // ── Registrar despacho ────────────────────────────────────────────────
@@ -693,23 +710,52 @@ export function Almacen() {
           </div>
 
           {/* OC */}
-          <div className="form-field">
+          <div className="form-field" ref={ocRef} style={{ position: 'relative' }}>
             <label className="form-label">Orden de Compra *</label>
-            <select
-              className="select"
-              value={recHeader.orden_compra_id}
-              onChange={e => setRecHeader(h => ({ ...h, orden_compra_id: e.target.value }))}
-              style={{ width: '100%' }}
-            >
-              <option value="">— Seleccionar OC —</option>
-              {ocList.map(oc => (
-                <option key={oc.id} value={oc.id}>
-                  {oc.num_oc}
-                  {oc.proveedor ? ` — ${oc.proveedor.razon_social}` : ''}
-                  {oc.operacion ? ` (${oc.operacion.correlativo_opci})` : ''}
-                </option>
-              ))}
-            </select>
+            <input
+              className="input"
+              value={ocSearch}
+              style={{ width: '100%', fontFamily: 'var(--font-mono)' }}
+              placeholder="Buscar número de OC…"
+              autoComplete="off"
+              onFocus={() => { setOcSearch(''); setShowOcDrop(true) }}
+              onBlur={() => setOcSearch(ocSelectedRef.current)}
+              onChange={e => { setOcSearch(e.target.value); setShowOcDrop(true) }}
+            />
+            {showOcDrop && (() => {
+              const q = ocSearch.toLowerCase()
+              const filtered = q ? ocList.filter(o => o.num_oc.toLowerCase().includes(q)) : ocList
+              return filtered.length > 0 ? (
+                <div style={{
+                  position: 'absolute', zIndex: 50, top: '100%', left: 0, right: 0,
+                  background: 'var(--panel)', border: '1px solid var(--border)',
+                  borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,.15)',
+                  maxHeight: 200, overflowY: 'auto', marginTop: 2,
+                }}>
+                  {filtered.map(oc => (
+                    <div
+                      key={oc.id}
+                      onMouseDown={() => {
+                        ocSelectedRef.current = oc.num_oc
+                        setOcSearch(oc.num_oc)
+                        setRecHeader(h => ({ ...h, orden_compra_id: oc.id }))
+                        setShowOcDrop(false)
+                      }}
+                      style={{
+                        padding: '7px 12px', cursor: 'pointer', fontSize: 13,
+                        fontFamily: 'var(--font-mono)',
+                        background: recHeader.orden_compra_id === oc.id ? 'var(--accent-soft)' : undefined,
+                        color: recHeader.orden_compra_id === oc.id ? 'var(--accent)' : 'var(--text)',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted-soft)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = recHeader.orden_compra_id === oc.id ? 'var(--accent-soft)' : '')}
+                    >
+                      {oc.num_oc}
+                    </div>
+                  ))}
+                </div>
+              ) : null
+            })()}
           </div>
 
           {/* Fecha recepción */}

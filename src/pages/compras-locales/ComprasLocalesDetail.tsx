@@ -13,6 +13,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { fmtDate, money, truncate } from '@/lib/utils'
+import { getParametrosLista } from '@/services/configuracion.service'
 import type {
   OrdenCompraLocal, OrdenCompraLocalItem, ProveedorFechaHistorial,
   EstadoOCL, OrdenCompraNota, OperacionItem,
@@ -29,7 +30,7 @@ const FORMAS_PAGO = [
   'Crédito 60 días', 'Crédito 90 días', 'Carta de crédito', 'Transferencia anticipada',
 ]
 
-const UNIDADES_MEDIDA = ['UND', 'KG', 'M', 'M2', 'M3', 'L', 'GLN', 'PAR', 'SET', 'CAJA', 'ROLLO', 'HRS', 'TON', 'PZA']
+const UNIDADES_MEDIDA_DEFAULT = ['UND', 'KG', 'M', 'M2', 'M3', 'L', 'GLN', 'PAR', 'SET', 'CAJA', 'ROLLO', 'HRS', 'TON', 'PZA', 'BOL', 'JGO', 'GLB', 'MLL']
 
 interface OCLDetail extends OrdenCompraLocal {
   items: OrdenCompraLocalItem[]
@@ -57,6 +58,11 @@ export function ComprasLocalesDetail() {
   const [opciSugeridas, setOpciSugeridas] = useState<{ id: string; correlativo_opci: string }[]>([])
   const [showOpciDrop, setShowOpciDrop] = useState(false)
   const opciDropRef = useRef<HTMLDivElement>(null)
+  const [unidadesMedida, setUnidadesMedida] = useState<string[]>(UNIDADES_MEDIDA_DEFAULT)
+  const [umSearch, setUmSearch] = useState('')
+  const [showUmDrop, setShowUmDrop] = useState(false)
+  const umRef = useRef<HTMLDivElement>(null)
+  const umSelectedRef = useRef('')
 
   // Modal fecha prometida
   const [showFecha, setShowFecha] = useState(false)
@@ -84,6 +90,21 @@ export function ComprasLocalesDetail() {
   }, [id])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    getParametrosLista('unidad_medida').then(vals => { if (vals.length) setUnidadesMedida(vals) })
+  }, [])
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (umRef.current && !umRef.current.contains(e.target as Node)) {
+        setShowUmDrop(false)
+        setUmSearch(umSelectedRef.current)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   useEffect(() => {
     if (opciSearch.length > 0 && opciSearch.length < 2) { setOpciSugeridas([]); return }
@@ -151,6 +172,7 @@ export function ComprasLocalesDetail() {
     if (error) { setAddItemError((error as Error).message ?? 'Error al guardar.'); return }
     setShowAddItem(false)
     setAddItemForm({ item_oc: '', producto_id: '', codigo_comercial: '', descripcion: '', cantidad: '', unidad_medida: '', moneda: 'USD', pcu1: '', operacion_item_id: '', opci_id: '' })
+    umSelectedRef.current = ''; setUmSearch('')
     load()
   }
 
@@ -337,7 +359,7 @@ export function ComprasLocalesDetail() {
       </div>
 
       {/* Modal: Agregar ítem */}
-      <Modal open={showAddItem} onClose={() => { setShowAddItem(false); setOpciSearch(''); setOpciSugeridas([]) }}
+      <Modal open={showAddItem} onClose={() => { setShowAddItem(false); setOpciSearch(''); setOpciSugeridas([]); umSelectedRef.current = ''; setUmSearch('') }}
         title="Agregar ítem a la OC" size="md"
         footer={
           <>
@@ -398,6 +420,7 @@ export function ComprasLocalesDetail() {
                   value={addItemForm.operacion_item_id}
                   onChange={e => {
                     const sel = opciItems.find(i => i.id === e.target.value)
+                    if (sel?.unidad_medida) { umSelectedRef.current = sel.unidad_medida; setUmSearch(sel.unidad_medida) }
                     setAddItemForm(f => ({
                       ...f,
                       operacion_item_id: e.target.value,
@@ -431,19 +454,56 @@ export function ComprasLocalesDetail() {
             <label className="form-label">Ítem OC</label>
             <input className="input" value={addItemForm.item_oc} onChange={e => setAddItemForm(f => ({ ...f, item_oc: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} placeholder="1, 2, 3…" />
           </div>
-          <div className="form-field">
+          <div className="form-field" ref={umRef} style={{ position: 'relative' }}>
             <label className="form-label">Unidad de medida</label>
             <input
-              list="umd-ocl"
               className="input"
-              value={addItemForm.unidad_medida}
-              onChange={e => setAddItemForm(f => ({ ...f, unidad_medida: e.target.value }))}
-              placeholder="UND, KG, M…"
+              value={umSearch}
               style={{ width: '100%' }}
+              placeholder="UND, KG, M…"
+              autoComplete="off"
+              onFocus={() => { setUmSearch(''); setShowUmDrop(true) }}
+              onBlur={() => setUmSearch(umSelectedRef.current)}
+              onChange={e => {
+                const v = e.target.value.toUpperCase()
+                setUmSearch(v)
+                setAddItemForm(f => ({ ...f, unidad_medida: v }))
+                setShowUmDrop(true)
+              }}
             />
-            <datalist id="umd-ocl">
-              {UNIDADES_MEDIDA.map(u => <option key={u} value={u} />)}
-            </datalist>
+            {showUmDrop && (() => {
+              const filtered = umSearch ? unidadesMedida.filter(u => u.includes(umSearch)) : unidadesMedida
+              return filtered.length > 0 ? (
+                <div style={{
+                  position: 'absolute', zIndex: 50, top: '100%', left: 0, right: 0,
+                  background: 'var(--panel)', border: '1px solid var(--border)',
+                  borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,.15)',
+                  maxHeight: 180, overflowY: 'auto', marginTop: 2,
+                }}>
+                  {filtered.map(u => (
+                    <div
+                      key={u}
+                      onMouseDown={() => {
+                        umSelectedRef.current = u
+                        setUmSearch(u)
+                        setAddItemForm(f => ({ ...f, unidad_medida: u }))
+                        setShowUmDrop(false)
+                      }}
+                      style={{
+                        padding: '7px 12px', cursor: 'pointer', fontSize: 13,
+                        fontFamily: 'var(--font-mono)',
+                        background: addItemForm.unidad_medida === u ? 'var(--accent-soft)' : undefined,
+                        color: addItemForm.unidad_medida === u ? 'var(--accent)' : 'var(--text)',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted-soft)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = addItemForm.unidad_medida === u ? 'var(--accent-soft)' : '')}
+                    >
+                      {u}
+                    </div>
+                  ))}
+                </div>
+              ) : null
+            })()}
           </div>
           <div className="form-field">
             <label className="form-label">Cantidad *</label>

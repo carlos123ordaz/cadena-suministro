@@ -41,17 +41,32 @@ INSERT INTO public.parametros_lista (tipo, valor, orden) VALUES
   ('forma_pago', 'Crédito 90 días',                       9),
   ('forma_pago', 'Carta de crédito',                     10);
 
+INSERT INTO public.parametros_lista (tipo, valor, orden, activo) VALUES
+  ('unidad_medida', 'UND',   1,  true),
+  ('unidad_medida', 'KG',    2,  true),
+  ('unidad_medida', 'M',     3,  true),
+  ('unidad_medida', 'M2',    4,  true),
+  ('unidad_medida', 'M3',    5,  true),
+  ('unidad_medida', 'L',     6,  true),
+  ('unidad_medida', 'GLN',   7,  true),
+  ('unidad_medida', 'PAR',   8,  true),
+  ('unidad_medida', 'SET',   9,  true),
+  ('unidad_medida', 'CAJA',  10, true),
+  ('unidad_medida', 'ROLLO', 11, true),
+  ('unidad_medida', 'HRS',   12, true),
+  ('unidad_medida', 'TON',   13, true),
+  ('unidad_medida', 'PZA',   14, true),
+  ('unidad_medida', 'BOL',   15, true),
+  ('unidad_medida', 'JGO',   16, true),
+  ('unidad_medida', 'GLB',   17, true),
+  ('unidad_medida', 'MLL',   18, true)
+ON CONFLICT DO NOTHING;
 -- ---------------------------------------------------------------------------
 -- almacenes
 -- ---------------------------------------------------------------------------
-INSERT INTO public.almacenes (id, nombre, codigo, direccion, activo)
-VALUES (
-  'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-  'Almacén Central Lima',
-  'ACL-01',
-  'Av. Separadora Industrial 1450, Ate Vitarte, Lima',
-  TRUE
-);
+INSERT INTO public.almacenes (id, nombre, codigo, direccion, activo) VALUES
+  ('a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'San Pedrito', 'SPD-01', 'Av. Separadora Industrial 1450, Ate Vitarte, Lima', TRUE),
+  ('a1b2c3d4-e5f6-7890-abcd-ef1234567891', 'Cora',        'ACL-01', 'Av. Separadora Industrial 1450, Ate Vitarte, Lima', TRUE);
 
 -- ---------------------------------------------------------------------------
 -- clientes (3 Peruvian industrial companies)

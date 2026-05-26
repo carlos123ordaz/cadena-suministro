@@ -38,6 +38,7 @@ export function OperacionesList({ onCreateNew }: Props) {
   const [savingEdit, setSavingEdit] = useState(false)
   const [deleteRow, setDeleteRow] = useState<Operacion | null>(null)
   const [deletingRow, setDeletingRow] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -76,8 +77,17 @@ export function OperacionesList({ onCreateNew }: Props) {
   async function handleDelete() {
     if (!deleteRow) return
     setDeletingRow(true)
-    await supabase.from('operaciones').delete().eq('id', deleteRow.id)
+    setDeleteError(null)
+    const { error } = await supabase.from('operaciones').delete().eq('id', deleteRow.id)
     setDeletingRow(false)
+    if (error) {
+      setDeleteError(
+        error.code === '23503'
+          ? 'No se puede eliminar: la operación tiene registros relacionados (importaciones, cotizaciones u otros).'
+          : `Error al eliminar: ${error.message}`
+      )
+      return
+    }
     setDeleteRow(null)
     load()
   }
@@ -251,12 +261,12 @@ export function OperacionesList({ onCreateNew }: Props) {
 
       <Modal
         open={!!deleteRow}
-        onClose={() => setDeleteRow(null)}
+        onClose={() => { setDeleteRow(null); setDeleteError(null) }}
         title="Eliminar Operación"
         size="sm"
         footer={
           <>
-            <button className="btn" onClick={() => setDeleteRow(null)}>Cancelar</button>
+            <button className="btn" onClick={() => { setDeleteRow(null); setDeleteError(null) }}>Cancelar</button>
             <button className="btn" style={{ background: 'var(--bad)', color: '#fff' }} onClick={handleDelete} disabled={deletingRow}>
               {deletingRow ? 'Eliminando…' : 'Eliminar'}
             </button>
@@ -266,6 +276,9 @@ export function OperacionesList({ onCreateNew }: Props) {
         <p style={{ fontSize: 13.5 }}>
           ¿Eliminar la operación <strong>{deleteRow?.correlativo_opci}</strong>? Esta acción no se puede deshacer.
         </p>
+        {deleteError && (
+          <p style={{ fontSize: 13, color: 'var(--bad)', marginTop: 8, marginBottom: 0 }}>{deleteError}</p>
+        )}
       </Modal>
 
         <div className="table-footer">

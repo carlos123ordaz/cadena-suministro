@@ -96,6 +96,19 @@ export function CreateOperacion({ open, onClose, onCreated }: Props) {
   const [showClienteProvDrop, setShowClienteProvDrop] = useState(false)
   const clienteProvRef = useRef<HTMLDivElement>(null)
 
+  // Combo vendedor 1 / 2 / líder
+  const [vendedor1Search, setVendedor1Search] = useState('')
+  const [showVendedor1Drop, setShowVendedor1Drop] = useState(false)
+  const vendedor1Ref = useRef<HTMLDivElement>(null)
+
+  const [vendedor2Search, setVendedor2Search] = useState('')
+  const [showVendedor2Drop, setShowVendedor2Drop] = useState(false)
+  const vendedor2Ref = useRef<HTMLDivElement>(null)
+
+  const [liderSearch, setLiderSearch] = useState('')
+  const [showLiderDrop, setShowLiderDrop] = useState(false)
+  const liderRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
     if (!open) return
     setForm(defaultForm)
@@ -105,6 +118,12 @@ export function CreateOperacion({ open, onClose, onCreated }: Props) {
     setShowClienteDrop(false)
     setShowClienteFinalDrop(false)
     setShowClienteProvDrop(false)
+    setVendedor1Search('')
+    setVendedor2Search('')
+    setLiderSearch('')
+    setShowVendedor1Drop(false)
+    setShowVendedor2Drop(false)
+    setShowLiderDrop(false)
     setCorrelatvoLoading(true)
     getNextCorrelativoOPCI().then(c => {
       setForm(f => ({ ...f, correlativo_opci: c }))
@@ -126,6 +145,9 @@ export function CreateOperacion({ open, onClose, onCreated }: Props) {
       if (clienteRef.current && !clienteRef.current.contains(e.target as Node)) setShowClienteDrop(false)
       if (clienteFinalRef.current && !clienteFinalRef.current.contains(e.target as Node)) setShowClienteFinalDrop(false)
       if (clienteProvRef.current && !clienteProvRef.current.contains(e.target as Node)) setShowClienteProvDrop(false)
+      if (vendedor1Ref.current && !vendedor1Ref.current.contains(e.target as Node)) setShowVendedor1Drop(false)
+      if (vendedor2Ref.current && !vendedor2Ref.current.contains(e.target as Node)) setShowVendedor2Drop(false)
+      if (liderRef.current && !liderRef.current.contains(e.target as Node)) setShowLiderDrop(false)
     }
     document.addEventListener('mousedown', handle)
     return () => document.removeEventListener('mousedown', handle)
@@ -139,6 +161,12 @@ export function CreateOperacion({ open, onClose, onCreated }: Props) {
       (c.nombre_comercial ?? '').toLowerCase().includes(lower) ||
       (c.ruc ?? '').includes(q)
     ).slice(0, 10)
+  }
+
+  function filterVendedores(q: string) {
+    if (!q.trim()) return vendedores.slice(0, 15)
+    const lower = q.toLowerCase()
+    return vendedores.filter(v => v.nombre_completo.toLowerCase().includes(lower)).slice(0, 15)
   }
 
   function filterProveedores(q: string): Proveedor[] {
@@ -359,10 +387,12 @@ export function CreateOperacion({ open, onClose, onCreated }: Props) {
               placeholder="Buscar o escribir libremente…"
               style={{ width: '100%', paddingLeft: 30 }}
             />
-            {showClienteProvDrop && form.cliente_proveedor.length >= 1 && (
+            {showClienteProvDrop && (
               <div style={dropdownStyle}>
                 {filterProveedores(form.cliente_proveedor).length === 0 ? (
-                  <div style={{ ...dropItemStyle, color: 'var(--text-3)' }}>Sin coincidencias — se guardará el texto escrito</div>
+                  <div style={{ ...dropItemStyle, color: 'var(--text-3)' }}>
+                    {form.cliente_proveedor ? 'Sin coincidencias — se guardará el texto escrito' : 'Sin proveedores cargados'}
+                  </div>
                 ) : filterProveedores(form.cliente_proveedor).map(p => (
                   <div key={p.id} style={dropItemStyle}
                     onMouseDown={() => { set('cliente_proveedor', p.razon_social); setShowClienteProvDrop(false) }}
@@ -425,30 +455,129 @@ export function CreateOperacion({ open, onClose, onCreated }: Props) {
         </div>
 
         {/* Vendedor 1 */}
-        <div className="form-field">
+        <div className="form-field" ref={vendedor1Ref}>
           <label className="form-label">Vendedor 1</label>
-          <select className="select" value={form.vendedor1_id} onChange={e => set('vendedor1_id', e.target.value)} style={{ width: '100%' }}>
-            <option value="">— Sin asignar —</option>
-            {vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre_completo}</option>)}
-          </select>
+          <div style={{ position: 'relative' }}>
+            <Icon name="search" size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', pointerEvents: 'none' }} />
+            <input
+              className="input"
+              value={vendedor1Search}
+              onChange={e => {
+                setVendedor1Search(e.target.value)
+                setShowVendedor1Drop(true)
+                if (!e.target.value) { set('vendedor1_id', ''); setVendedor2Search('') }
+              }}
+              onFocus={() => setShowVendedor1Drop(true)}
+              placeholder="Buscar vendedor…"
+              style={{ width: '100%', paddingLeft: 30 }}
+            />
+            {form.vendedor1_id && (
+              <button className="btn ghost xs" style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
+                onClick={() => { set('vendedor1_id', ''); setVendedor1Search(''); setVendedor2Search('') }}>
+                <Icon name="x" size={11} />
+              </button>
+            )}
+            {showVendedor1Drop && (
+              <div style={dropdownStyle}>
+                {filterVendedores(vendedor1Search).length === 0 ? (
+                  <div style={{ ...dropItemStyle, color: 'var(--text-3)' }}>Sin resultados</div>
+                ) : filterVendedores(vendedor1Search).map(v => (
+                  <div key={v.id} style={dropItemStyle}
+                    onMouseDown={() => {
+                      const wasEmpty = !form.vendedor2_id
+                      set('vendedor1_id', v.id)
+                      setVendedor1Search(v.nombre_completo)
+                      if (wasEmpty) setVendedor2Search(v.nombre_completo)
+                      setShowVendedor1Drop(false)
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--panel-2)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                    {v.nombre_completo}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Vendedor 2 */}
-        <div className="form-field">
+        <div className="form-field" ref={vendedor2Ref}>
           <label className="form-label">Vendedor 2 <span className="tiny muted">(copia vendedor 1 por defecto)</span></label>
-          <select className="select" value={form.vendedor2_id} onChange={e => set('vendedor2_id', e.target.value)} style={{ width: '100%' }}>
-            <option value="">— Sin asignar —</option>
-            {vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre_completo}</option>)}
-          </select>
+          <div style={{ position: 'relative' }}>
+            <Icon name="search" size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', pointerEvents: 'none' }} />
+            <input
+              className="input"
+              value={vendedor2Search}
+              onChange={e => {
+                setVendedor2Search(e.target.value)
+                setShowVendedor2Drop(true)
+                if (!e.target.value) set('vendedor2_id', '')
+              }}
+              onFocus={() => setShowVendedor2Drop(true)}
+              placeholder="Buscar vendedor…"
+              style={{ width: '100%', paddingLeft: 30 }}
+            />
+            {form.vendedor2_id && (
+              <button className="btn ghost xs" style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
+                onClick={() => { set('vendedor2_id', ''); setVendedor2Search('') }}>
+                <Icon name="x" size={11} />
+              </button>
+            )}
+            {showVendedor2Drop && (
+              <div style={dropdownStyle}>
+                {filterVendedores(vendedor2Search).length === 0 ? (
+                  <div style={{ ...dropItemStyle, color: 'var(--text-3)' }}>Sin resultados</div>
+                ) : filterVendedores(vendedor2Search).map(v => (
+                  <div key={v.id} style={dropItemStyle}
+                    onMouseDown={() => { set('vendedor2_id', v.id); setVendedor2Search(v.nombre_completo); setShowVendedor2Drop(false) }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--panel-2)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                    {v.nombre_completo}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Líder */}
-        <div className="form-field" style={{ gridColumn: '1 / -1' }}>
+        <div className="form-field" style={{ gridColumn: '1 / -1' }} ref={liderRef}>
           <label className="form-label">Líder</label>
-          <select className="select" value={form.lider_id} onChange={e => set('lider_id', e.target.value)} style={{ width: '100%' }}>
-            <option value="">— Sin asignar —</option>
-            {vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre_completo}</option>)}
-          </select>
+          <div style={{ position: 'relative' }}>
+            <Icon name="search" size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', pointerEvents: 'none' }} />
+            <input
+              className="input"
+              value={liderSearch}
+              onChange={e => {
+                setLiderSearch(e.target.value)
+                setShowLiderDrop(true)
+                if (!e.target.value) set('lider_id', '')
+              }}
+              onFocus={() => setShowLiderDrop(true)}
+              placeholder="Buscar líder…"
+              style={{ width: '100%', paddingLeft: 30 }}
+            />
+            {form.lider_id && (
+              <button className="btn ghost xs" style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
+                onClick={() => { set('lider_id', ''); setLiderSearch('') }}>
+                <Icon name="x" size={11} />
+              </button>
+            )}
+            {showLiderDrop && (
+              <div style={dropdownStyle}>
+                {filterVendedores(liderSearch).length === 0 ? (
+                  <div style={{ ...dropItemStyle, color: 'var(--text-3)' }}>Sin resultados</div>
+                ) : filterVendedores(liderSearch).map(v => (
+                  <div key={v.id} style={dropItemStyle}
+                    onMouseDown={() => { set('lider_id', v.id); setLiderSearch(v.nombre_completo); setShowLiderDrop(false) }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--panel-2)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                    {v.nombre_completo}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Preview monto */}

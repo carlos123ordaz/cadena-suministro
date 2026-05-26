@@ -9,6 +9,7 @@ import {
 import type { Column } from '@/components/ui'
 import { supabase } from '@/lib/supabase'
 import { getOperacion, cambiarEstadoOperacion } from '@/services/operaciones.service'
+import { getParametrosLista } from '@/services/configuracion.service'
 import { addComentario, getComentarios, getHistorial } from '@/services/historial.service'
 import { getDocumentos } from '@/services/documentos.service'
 import { useAuth } from '@/context/AuthContext'
@@ -20,7 +21,7 @@ import type {
   TipoNegocio, SubTipoNegocio, SubTipoNegocio2,
 } from '@/types'
 
-const UNIDADES_MEDIDA = ['UND', 'KG', 'M', 'M2', 'M3', 'L', 'GLN', 'PAR', 'SET', 'CAJA', 'ROLLO', 'HRS', 'TON', 'PZA']
+const UNIDADES_MEDIDA_DEFAULT = ['UND', 'KG', 'M', 'M2', 'M3', 'L', 'GLN', 'PAR', 'SET', 'CAJA', 'ROLLO', 'HRS', 'TON', 'PZA']
 
 const TABS = [
   { id: 'resumen',   label: 'Resumen' },
@@ -71,6 +72,7 @@ export function OperacionDetail() {
   const [documentos, setDocumentos] = useState<DocumentoAdjunto[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('resumen')
+  const [unidadesMedida, setUnidadesMedida] = useState<string[]>(UNIDADES_MEDIDA_DEFAULT)
 
   const [showUpload, setShowUpload] = useState(false)
 
@@ -117,6 +119,10 @@ export function OperacionDetail() {
   const [productosSugeridos, setProductosSugeridos] = useState<Producto[]>([])
   const [showProductosDrop, setShowProductosDrop] = useState(false)
   const productoDropRef = useRef<HTMLDivElement>(null)
+  const [umSearch, setUmSearch] = useState('')
+  const [showUmDrop, setShowUmDrop] = useState(false)
+  const umRef = useRef<HTMLDivElement>(null)
+  const umSelectedRef = useRef('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -134,6 +140,23 @@ export function OperacionDetail() {
   }, [operacionId])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    getParametrosLista('unidad_medida').then(vals => {
+      if (vals.length > 0) setUnidadesMedida(vals)
+    })
+  }, [])
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (umRef.current && !umRef.current.contains(e.target as Node)) {
+        setShowUmDrop(false)
+        setUmSearch(umSelectedRef.current)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   async function handleCambiarEstado() {
     if (!nuevoEstado || !profile) return
@@ -161,17 +184,19 @@ export function OperacionDetail() {
   }, [productosSearch])
 
   function selectProducto(p: Producto) {
+    const um = p.unidad_medida || ''
     setItemForm(f => ({
       ...f,
       producto_id: p.id,
       producto_tipo: p.tipo ?? '',
       codigo_comercial: p.codigo_comercial,
       descripcion: p.descripcion,
-      unidad_medida: p.unidad_medida ?? f.unidad_medida,
+      unidad_medida: um || f.unidad_medida,
       numero_servicio: '',
       numero_proyecto: '',
       precio_total_estimado: '',
     }))
+    if (um) { umSelectedRef.current = um; setUmSearch(um) }
     setProductosSearch(p.codigo_comercial)
     setProductosSugeridos([])
     setShowProductosDrop(false)
@@ -249,6 +274,8 @@ export function OperacionDetail() {
     setItemNotas([])
     setItemNotaInput('')
     setProductosSearch('')
+    umSelectedRef.current = ''
+    setUmSearch('')
     load()
   }
 
@@ -632,7 +659,7 @@ export function OperacionDetail() {
       {/* Modal agregar ítem */}
       <Modal
         open={showAddItem}
-        onClose={() => { setShowAddItem(false); setItemError(null); setProductosSearch(''); setProductosSugeridos([]); setItemNotas([]); setItemNotaInput('') }}
+        onClose={() => { setShowAddItem(false); setItemError(null); setProductosSearch(''); setProductosSugeridos([]); setItemNotas([]); setItemNotaInput(''); umSelectedRef.current = ''; setUmSearch('') }}
         title="Agregar ítem a la operación"
         subtitle={op?.correlativo_opci}
         size="xl"
@@ -730,12 +757,56 @@ export function OperacionDetail() {
           </div>
 
           {/* Unidad de medida */}
-          <div className="form-field">
+          <div className="form-field" ref={umRef} style={{ position: 'relative' }}>
             <label className="form-label">Unidad de medida</label>
-            <input list="um-list" className="input" value={itemForm.unidad_medida} onChange={e => setItemForm(f => ({ ...f, unidad_medida: e.target.value }))} style={{ width: '100%' }} placeholder="UND, KG, M2…" />
-            <datalist id="um-list">
-              {UNIDADES_MEDIDA.map(u => <option key={u} value={u} />)}
-            </datalist>
+            <input
+              className="input"
+              value={umSearch}
+              style={{ width: '100%' }}
+              placeholder="UND, KG, M2…"
+              autoComplete="off"
+              onFocus={() => { setUmSearch(''); setShowUmDrop(true) }}
+              onBlur={() => setUmSearch(umSelectedRef.current)}
+              onChange={e => {
+                const v = e.target.value.toUpperCase()
+                setUmSearch(v)
+                setItemForm(f => ({ ...f, unidad_medida: v }))
+                setShowUmDrop(true)
+              }}
+            />
+            {showUmDrop && (() => {
+              const filtered = umSearch ? unidadesMedida.filter(u => u.includes(umSearch)) : unidadesMedida
+              return filtered.length > 0 ? (
+                <div style={{
+                  position: 'absolute', zIndex: 50, top: '100%', left: 0, right: 0,
+                  background: 'var(--panel)', border: '1px solid var(--border)',
+                  borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,.15)',
+                  maxHeight: 180, overflowY: 'auto', marginTop: 2,
+                }}>
+                  {filtered.map(u => (
+                    <div
+                      key={u}
+                      onMouseDown={() => {
+                        umSelectedRef.current = u
+                        setUmSearch(u)
+                        setItemForm(f => ({ ...f, unidad_medida: u }))
+                        setShowUmDrop(false)
+                      }}
+                      style={{
+                        padding: '7px 12px', cursor: 'pointer', fontSize: 13,
+                        fontFamily: 'var(--font-mono)',
+                        background: itemForm.unidad_medida === u ? 'var(--accent-soft)' : undefined,
+                        color: itemForm.unidad_medida === u ? 'var(--accent)' : 'var(--text)',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted-soft)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = itemForm.unidad_medida === u ? 'var(--accent-soft)' : '')}
+                    >
+                      {u}
+                    </div>
+                  ))}
+                </div>
+              ) : null
+            })()}
           </div>
 
           {/* Moneda */}

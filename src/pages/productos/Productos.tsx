@@ -1,12 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Icon, Card, DataTable, Modal, Badge } from '@/components/ui'
 import type { Column } from '@/components/ui'
 import { getProductos, searchProductos, createProducto, updateProducto } from '@/services/productos.service'
 import { supabase } from '@/lib/supabase'
 import { money } from '@/lib/utils'
 import type { Producto, TipoProducto } from '@/types'
+import { getParametrosLista } from '@/services/configuracion.service'
 
-const UNIDADES_MEDIDA = ['UND', 'KG', 'M', 'M2', 'M3', 'L', 'GLN', 'PAR', 'SET', 'CAJA', 'ROLLO', 'HRS', 'TON', 'PZA']
+const UNIDADES_MEDIDA_DEFAULT = ['UND', 'KG', 'M', 'M2', 'M3', 'L', 'GLN', 'PAR', 'SET', 'CAJA', 'ROLLO', 'HRS', 'TON', 'PZA', 'BOL', 'JGO', 'GLB', 'MLL']
 
 const TIPO_TONE: Record<TipoProducto, 'ok' | 'info' | 'warn'> = {
   Producto: 'ok',
@@ -54,6 +55,13 @@ export function Productos() {
   const [form, setForm] = useState<ProdForm>(defaultForm)
   const [saving, setSaving] = useState(false)
 
+  // Unidad de medida combobox
+  const [unidadesMedida, setUnidadesMedida] = useState<string[]>(UNIDADES_MEDIDA_DEFAULT)
+  const [umSearch, setUmSearch] = useState('UND')
+  const [showUmDrop, setShowUmDrop] = useState(false)
+  const umRef = useRef<HTMLDivElement>(null)
+  const umSelectedRef = useRef('UND')   // tracks confirmed selection to restore on blur
+
   // Autocomplete lists for clase / subclase / subsubclase
   const [clasesList, setClasesList] = useState<string[]>([])
   const [subclasesList, setSubclasesList] = useState<string[]>([])
@@ -76,6 +84,23 @@ export function Productos() {
     return () => clearTimeout(t)
   }, [load])
 
+  useEffect(() => {
+    getParametrosLista('unidad_medida').then(vals => {
+      if (vals.length) setUnidadesMedida(vals)
+    })
+  }, [])
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (umRef.current && !umRef.current.contains(e.target as Node)) {
+        setShowUmDrop(false)
+        setUmSearch(umSelectedRef.current)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
   // Load distinct classification values once
   useEffect(() => {
     supabase.from('productos').select('clase').not('clase', 'is', null)
@@ -86,10 +111,17 @@ export function Productos() {
       .then(({ data }) => setSubsubclasesList([...new Set((data ?? []).map((r: { subsubclase: string }) => r.subsubclase).filter(Boolean))].sort()))
   }, [])
 
-  function openCreate() { setEditing(null); setForm(defaultForm); setShowModal(true) }
+  function openCreate() {
+    setEditing(null)
+    setForm(defaultForm)
+    umSelectedRef.current = defaultForm.unidad_medida
+    setUmSearch(defaultForm.unidad_medida)
+    setShowModal(true)
+  }
 
   function openEdit(p: Producto) {
     setEditing(p)
+    const um = p.unidad_medida ?? 'UND'
     setForm({
       codigo_comercial: p.codigo_comercial,
       descripcion: p.descripcion,
@@ -97,13 +129,15 @@ export function Productos() {
       clase: p.clase ?? '',
       subclase: p.subclase ?? '',
       subsubclase: p.subsubclase ?? '',
-      unidad_medida: p.unidad_medida ?? 'UND',
+      unidad_medida: um,
       marca: p.marca ?? '',
       codigo_erp: p.codigo_erp ?? '',
       precio_referencial: p.precio_referencial?.toString() ?? '',
       moneda_ref: p.moneda_ref ?? 'USD',
       activo: p.activo,
     })
+    umSelectedRef.current = um
+    setUmSearch(um)
     setShowModal(true)
   }
 
@@ -210,17 +244,29 @@ export function Productos() {
               style={{ width: 260 }}
             />
           </div>
-          <select
-            className="select"
-            value={filterTipo}
-            onChange={e => setFilterTipo(e.target.value as TipoProducto | '')}
-            style={{ flex: '0 0 140px' }}
-          >
-            <option value="">Todos los tipos</option>
-            <option value="Producto">Producto</option>
-            <option value="Servicio">Servicio</option>
-            <option value="Proyecto">Proyecto</option>
-          </select>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {(['', 'Producto', 'Servicio', 'Proyecto'] as (TipoProducto | '')[]).map(t => (
+              <button
+                key={t || 'todos'}
+                type="button"
+                onClick={() => setFilterTipo(t)}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  border: `1.5px solid ${filterTipo === t ? 'var(--accent)' : 'var(--border)'}`,
+                  background: filterTipo === t ? 'var(--accent-soft)' : 'var(--panel-2)',
+                  color: filterTipo === t ? 'var(--accent)' : 'var(--text-2)',
+                  fontWeight: filterTipo === t ? 600 : 400,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  transition: 'all .12s',
+                }}
+              >
+                {t || 'Todos'}
+              </button>
+            ))}
+          </div>
           <div className="spacer" />
           <button className="btn sm"><Icon name="download" size={13} /> Exportar</button>
         </div>
@@ -363,18 +409,58 @@ export function Productos() {
               placeholder="Fabricante o marca"
             />
           </div>
-          <div className="form-field">
+          <div className="form-field" ref={umRef} style={{ position: 'relative' }}>
             <label className="form-label">Unidad de medida</label>
             <input
-              list="dl-umd"
               className="input"
-              value={form.unidad_medida}
-              onChange={e => setForm(x => ({ ...x, unidad_medida: e.target.value }))}
+              value={umSearch}
               style={{ width: '100%' }}
+              placeholder="Ej: UND, KG…"
+              autoComplete="off"
+              onFocus={() => { setUmSearch(''); setShowUmDrop(true) }}
+              onBlur={() => setUmSearch(umSelectedRef.current)}
+              onChange={e => {
+                const v = e.target.value.toUpperCase()
+                setUmSearch(v)
+                setForm(x => ({ ...x, unidad_medida: v }))
+                setShowUmDrop(true)
+              }}
             />
-            <datalist id="dl-umd">
-              {UNIDADES_MEDIDA.map(u => <option key={u} value={u} />)}
-            </datalist>
+            {showUmDrop && (() => {
+              const filtered = umSearch
+                ? unidadesMedida.filter(u => u.includes(umSearch))
+                : unidadesMedida
+              return filtered.length > 0 ? (
+                <div style={{
+                  position: 'absolute', zIndex: 50, top: '100%', left: 0, right: 0,
+                  background: 'var(--panel)', border: '1px solid var(--border)',
+                  borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,.15)',
+                  maxHeight: 180, overflowY: 'auto', marginTop: 2,
+                }}>
+                  {filtered.map(u => (
+                    <div
+                      key={u}
+                      onMouseDown={() => {
+                        umSelectedRef.current = u
+                        setUmSearch(u)
+                        setForm(x => ({ ...x, unidad_medida: u }))
+                        setShowUmDrop(false)
+                      }}
+                      style={{
+                        padding: '7px 12px', cursor: 'pointer', fontSize: 13,
+                        fontFamily: 'var(--font-mono)',
+                        background: form.unidad_medida === u ? 'var(--accent-soft)' : undefined,
+                        color: form.unidad_medida === u ? 'var(--accent)' : 'var(--text)',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted-soft)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = form.unidad_medida === u ? 'var(--accent-soft)' : '')}
+                    >
+                      {u}
+                    </div>
+                  ))}
+                </div>
+              ) : null
+            })()}
           </div>
           <div className="form-field">
             <label className="form-label">Precio referencial</label>
