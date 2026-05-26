@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
-import { Icon } from '@/components/ui'
+import { Icon, AppLogo } from '@/components/ui'
 
 export function Login() {
   const { signIn } = useAuth()
@@ -22,7 +22,7 @@ export function Login() {
     <div className="login-wrap">
       <div className="login-card">
         <div className="login-logo">
-          <div className="brand-mark" style={{ width: 32, height: 32, borderRadius: 8 }} />
+          <AppLogo size={32} />
           <div>
             <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-0.02em' }}>CadenaSuministro</div>
             <div style={{ fontSize: 11, color: 'var(--text-3)' }}>OPCI · Suite</div>

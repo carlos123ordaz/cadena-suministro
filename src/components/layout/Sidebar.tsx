@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Icon } from '@/components/ui'
+import { Icon, AppLogo } from '@/components/ui'
 
 interface NavItem {
   path: string
@@ -66,7 +66,7 @@ export function Sidebar({ counts = {} }: SidebarProps) {
     <aside className="app-sidebar">
       {/* Brand */}
       <div className="brand">
-        <div className="brand-mark" />
+        <AppLogo size={22} />
         <div className="brand-name">
           CadenaSuministro
           <span>OPCI · Suite</span>

@@ -1,4 +1,5 @@
 export { Icon } from './Icon'
+export { AppLogo } from './AppLogo'
 export { Badge, StatusBadge, OPCI_STATUS_TONE, OCL_STATUS_TONE, OCI_STATUS_TONE, FACTURA_STATUS_TONE, DESPACHO_STATUS_TONE, RECEPCION_STATUS_TONE } from './Badge'
 export type { BadgeTone } from './Badge'
 export { DataTable } from './DataTable'
