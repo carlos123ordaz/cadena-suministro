@@ -212,6 +212,10 @@ CREATE TABLE public.operacion_items (
   centro_costo          TEXT,
   subcentro_costo       TEXT,
   sub_sub_centro_costo  TEXT,
+  t_e_semanas           NUMERIC,
+  numero_servicio       TEXT,
+  numero_proyecto       TEXT,
+  precio_total_estimado NUMERIC(14,2),
   estado                TEXT DEFAULT 'Pendiente',
   created_at            TIMESTAMPTZ DEFAULT NOW(),
   updated_at            TIMESTAMPTZ DEFAULT NOW()
@@ -300,7 +304,6 @@ CREATE TABLE public.ordenes_compra (
   numero_factura_proveedor        TEXT,
   fecha_invoice                   DATE,
   num_invoice                     TEXT,
-  num_item_invoice                TEXT,
   tipo_embarque                   TEXT,
   pais_embarque                   TEXT,
   ciudad_embarque                 TEXT,
@@ -364,6 +367,7 @@ CREATE TABLE public.orden_compra_items (
   pcu2                NUMERIC(14,4),
   tc_usd              NUMERIC(8,4),
   monto_total         NUMERIC(14,2),
+  num_item_invoice    TEXT,
   created_at          TIMESTAMPTZ DEFAULT NOW()
 );
 

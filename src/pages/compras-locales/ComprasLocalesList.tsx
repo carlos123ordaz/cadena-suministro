@@ -14,7 +14,8 @@ import {
   getOrdenesCompraLocal,
   createOrdenCompraLocal,
 } from '@/services/compras.service'
-import { getProveedores } from '@/services/proveedores.service'
+import { ProveedorCombobox } from '@/components/ui'
+import type { ProveedorOption } from '@/components/ui'
 import { supabase } from '@/lib/supabase'
 import type { OrdenCompraLocal, EstadoOCL } from '@/types'
 import { money, truncate } from '@/lib/utils'
@@ -55,11 +56,68 @@ export function ComprasLocalesList() {
   const [filterEstado, setFilterEstado] = useState<EstadoOCL | ''>('')
   const [filterProveedor, setFilterProveedor] = useState('')
 
+  // ── Modal: Editar OC ──────────────────────────────────────────────────
+  const [editRow, setEditRow] = useState<OrdenCompraLocal | null>(null)
+  const [editFormProv, setEditFormProv] = useState<ProveedorOption | null>(null)
+  const [editForm, setEditForm] = useState({
+    num_oc: '', fecha_oc: '', moneda: 'USD', monto_total: '', status: '' as EstadoOCL | '',
+    num_cotizacion_proveedor: '', fecha_ofrecida: '', forma_pago: '', notas: '',
+  })
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  function openEdit(row: OrdenCompraLocal) {
+    setEditFormProv(row.proveedor ? { id: row.proveedor_id, razon_social: row.proveedor.razon_social } : null)
+    setEditForm({
+      num_oc: row.num_oc ?? '',
+      fecha_oc: row.fecha_oc ?? '',
+      moneda: row.moneda ?? 'USD',
+      monto_total: row.monto_total?.toString() ?? '',
+      status: row.status,
+      num_cotizacion_proveedor: row.num_cotizacion_proveedor ?? '',
+      fecha_ofrecida: row.fecha_ofrecida ?? '',
+      forma_pago: row.forma_pago ?? '',
+      notas: row.notas ?? '',
+    })
+    setEditRow(row)
+  }
+
+  async function handleSaveEdit() {
+    if (!editRow) return
+    setSavingEdit(true)
+    await supabase.from('ordenes_compra').update({
+      proveedor_id: editFormProv?.id ?? editRow.proveedor_id,
+      num_oc: editForm.num_oc || undefined,
+      fecha_oc: editForm.fecha_oc || undefined,
+      moneda: editForm.moneda,
+      monto_total: parseFloat(editForm.monto_total) || 0,
+      status: editForm.status || undefined,
+      num_cotizacion_proveedor: editForm.num_cotizacion_proveedor || null,
+      fecha_ofrecida: editForm.fecha_ofrecida || null,
+      forma_pago: editForm.forma_pago || null,
+      notas: editForm.notas || null,
+    }).eq('id', editRow.id)
+    setSavingEdit(false)
+    setEditRow(null)
+    loadList()
+  }
+
+  // ── Modal: Eliminar OC ────────────────────────────────────────────────
+  const [deleteRow, setDeleteRow] = useState<OrdenCompraLocal | null>(null)
+  const [deletingRow, setDeletingRow] = useState(false)
+
+  async function handleDelete() {
+    if (!deleteRow) return
+    setDeletingRow(true)
+    await supabase.from('ordenes_compra').delete().eq('id', deleteRow.id)
+    setDeletingRow(false)
+    setDeleteRow(null)
+    loadList()
+  }
+
   // ── Modal: Crear OC ───────────────────────────────────────────────────
   const [showCreate, setShowCreate] = useState(false)
-  const [proveedoresList, setProveedoresList] = useState<{ id: string; razon_social: string }[]>([])
+  const [createFormProv, setCreateFormProv] = useState<ProveedorOption | null>(null)
   const [createForm, setCreateForm] = useState({
-    proveedor_id: '',
     num_oc: '',
     fecha_oc: new Date().toISOString().slice(0, 10),
     moneda: 'USD',
@@ -71,16 +129,9 @@ export function ComprasLocalesList() {
   const [createSaving, setCreateSaving] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
 
-  // ── Load Proveedores for create form ─────────────────────────────────
-  useEffect(() => {
-    getProveedores().then(r =>
-      setProveedoresList((r.data ?? []).map(p => ({ id: p.id, razon_social: p.razon_social }))),
-    )
-  }, [])
-
   // ── Create OC ─────────────────────────────────────────────────────────
   async function handleCreateOCL() {
-    if (!createForm.proveedor_id || !createForm.num_oc || !createForm.fecha_oc) {
+    if (!createFormProv || !createForm.num_oc || !createForm.fecha_oc) {
       setCreateError('Proveedor, N° OC y fecha son obligatorios.')
       return
     }
@@ -88,7 +139,7 @@ export function ComprasLocalesList() {
     setCreateError(null)
     const { data, error } = await createOrdenCompraLocal(
       {
-        proveedor_id: createForm.proveedor_id,
+        proveedor_id: createFormProv.id,
         num_oc: createForm.num_oc,
         fecha_oc: createForm.fecha_oc,
         moneda: createForm.moneda as 'USD' | 'PEN' | 'EUR',
@@ -106,8 +157,8 @@ export function ComprasLocalesList() {
       return
     }
     setShowCreate(false)
+    setCreateFormProv(null)
     setCreateForm({
-      proveedor_id: '',
       num_oc: '',
       fecha_oc: new Date().toISOString().slice(0, 10),
       moneda: 'USD',
@@ -257,6 +308,19 @@ export function ComprasLocalesList() {
       label: 'Estado',
       render: row => <StatusBadge status={row.status} mapping={OCL_STATUS_TONE} />,
     },
+    {
+      key: '_actions', label: '', width: 64,
+      render: row => (
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button className="btn ghost xs" onClick={e => { e.stopPropagation(); openEdit(row) }} title="Editar">
+            <Icon name="edit" size={12} />
+          </button>
+          <button className="btn ghost xs" style={{ color: 'var(--bad)' }} onClick={e => { e.stopPropagation(); setDeleteRow(row) }} title="Eliminar">
+            <Icon name="trash" size={12} />
+          </button>
+        </div>
+      ),
+    },
   ]
 
   // ── Render ────────────────────────────────────────────────────────────
@@ -321,6 +385,94 @@ export function ComprasLocalesList() {
         </div>
       </div>
 
+      {/* Modal: Editar OC */}
+      <Modal
+        open={!!editRow}
+        onClose={() => setEditRow(null)}
+        title="Editar Orden de Compra"
+        size="md"
+        footer={
+          <>
+            <button className="btn" onClick={() => setEditRow(null)}>Cancelar</button>
+            <button className="btn primary" onClick={handleSaveEdit} disabled={savingEdit || !editFormProv || !editForm.num_oc}>
+              {savingEdit ? 'Guardando…' : 'Guardar'}
+            </button>
+          </>
+        }
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div className="form-field" style={{ gridColumn: '1 / -1' }}>
+            <label className="form-label">Proveedor *</label>
+            <ProveedorCombobox value={editFormProv} onChange={setEditFormProv} tipo="Local" placeholder="Buscar proveedor local…" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">N° OC *</label>
+            <input className="input" value={editForm.num_oc} onChange={e => setEditForm(f => ({ ...f, num_oc: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Fecha OC</label>
+            <input type="date" className="input" value={editForm.fecha_oc} onChange={e => setEditForm(f => ({ ...f, fecha_oc: e.target.value }))} style={{ width: '100%' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Moneda</label>
+            <select className="select" value={editForm.moneda} onChange={e => setEditForm(f => ({ ...f, moneda: e.target.value }))} style={{ width: '100%' }}>
+              <option value="USD">USD</option>
+              <option value="PEN">PEN</option>
+              <option value="EUR">EUR</option>
+            </select>
+          </div>
+          <div className="form-field">
+            <label className="form-label">Monto total</label>
+            <input type="number" className="input" value={editForm.monto_total} onChange={e => setEditForm(f => ({ ...f, monto_total: e.target.value }))} style={{ width: '100%' }} step="0.01" min="0" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Estado</label>
+            <select className="select" value={editForm.status} onChange={e => setEditForm(f => ({ ...f, status: e.target.value as EstadoOCL }))} style={{ width: '100%' }}>
+              {OCL_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="form-field">
+            <label className="form-label">Forma de pago</label>
+            <select className="select" value={editForm.forma_pago} onChange={e => setEditForm(f => ({ ...f, forma_pago: e.target.value }))} style={{ width: '100%' }}>
+              <option value="">— Sin especificar —</option>
+              {FORMAS_PAGO_COMBO.map(fp => <option key={fp} value={fp}>{fp}</option>)}
+            </select>
+          </div>
+          <div className="form-field">
+            <label className="form-label">N° Cotización proveedor</label>
+            <input className="input" value={editForm.num_cotizacion_proveedor} onChange={e => setEditForm(f => ({ ...f, num_cotizacion_proveedor: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} placeholder="COT-001" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Fecha ofrecida</label>
+            <input type="date" className="input" value={editForm.fecha_ofrecida} onChange={e => setEditForm(f => ({ ...f, fecha_ofrecida: e.target.value }))} style={{ width: '100%' }} />
+          </div>
+          <div className="form-field" style={{ gridColumn: '1 / -1' }}>
+            <label className="form-label">Notas</label>
+            <textarea className="input" rows={2} value={editForm.notas} onChange={e => setEditForm(f => ({ ...f, notas: e.target.value }))} style={{ width: '100%', resize: 'vertical' }} />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal: Confirmar eliminación OC */}
+      <Modal
+        open={!!deleteRow}
+        onClose={() => setDeleteRow(null)}
+        title="Eliminar Orden de Compra"
+        size="sm"
+        footer={
+          <>
+            <button className="btn" onClick={() => setDeleteRow(null)}>Cancelar</button>
+            <button className="btn" style={{ background: 'var(--bad)', color: '#fff' }} onClick={handleDelete} disabled={deletingRow}>
+              {deletingRow ? 'Eliminando…' : 'Eliminar'}
+            </button>
+          </>
+        }
+      >
+        <p style={{ fontSize: 13.5 }}>
+          ¿Eliminar la OC <strong>{deleteRow?.num_oc}</strong>? Esta acción no se puede deshacer.
+        </p>
+      </Modal>
+
       {/* Modal: Crear OC */}
       <Modal
         open={showCreate}
@@ -333,7 +485,7 @@ export function ComprasLocalesList() {
             <button
               className="btn primary"
               onClick={handleCreateOCL}
-              disabled={createSaving || !createForm.proveedor_id || !createForm.num_oc}
+              disabled={createSaving || !createFormProv || !createForm.num_oc}
             >
               {createSaving ? 'Creando…' : 'Crear OC'}
             </button>
@@ -348,10 +500,7 @@ export function ComprasLocalesList() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <div className="form-field" style={{ gridColumn: '1 / -1' }}>
             <label className="form-label">Proveedor *</label>
-            <select className="select" value={createForm.proveedor_id} onChange={e => setCreateForm(f => ({ ...f, proveedor_id: e.target.value }))} style={{ width: '100%' }}>
-              <option value="">— Seleccionar proveedor —</option>
-              {proveedoresList.map(p => <option key={p.id} value={p.id}>{p.razon_social}</option>)}
-            </select>
+            <ProveedorCombobox value={createFormProv} onChange={setCreateFormProv} tipo="Local" placeholder="Buscar proveedor local…" />
           </div>
           <div className="form-field">
             <label className="form-label">N° OC *</label>

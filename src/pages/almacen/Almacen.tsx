@@ -80,6 +80,108 @@ export function Almacen() {
   const [recItems, setRecItems] = useState<RecItemRow[]>([])
   const [loadingOcItems, setLoadingOcItems] = useState(false)
 
+  // ── Editar / Eliminar Recepción ───────────────────────────────────────
+  const [editRec, setEditRec] = useState<Recepcion | null>(null)
+  const [editRecForm, setEditRecForm] = useState({
+    estado: '' as Recepcion['estado'] | '',
+    conf_almacen: '' as ConformidadRecepcion | '',
+    motivo_conf_almacen: '',
+    cantidad_recibida: '',
+    fecha_recepcion: '',
+    erp_inta_entrada: '',
+    notas: '',
+  })
+  const [savingEditRec, setSavingEditRec] = useState(false)
+  const [deleteRec, setDeleteRec] = useState<Recepcion | null>(null)
+  const [deletingRec, setDeletingRec] = useState(false)
+
+  function openEditRec(r: Recepcion) {
+    setEditRecForm({
+      estado: r.estado,
+      conf_almacen: r.conf_almacen ?? '',
+      motivo_conf_almacen: r.motivo_conf_almacen ?? '',
+      cantidad_recibida: r.cantidad_recibida?.toString() ?? '',
+      fecha_recepcion: r.fecha_recepcion ?? '',
+      erp_inta_entrada: r.erp_inta_entrada ?? '',
+      notas: r.notas ?? '',
+    })
+    setEditRec(r)
+  }
+
+  async function handleSaveEditRec() {
+    if (!editRec) return
+    setSavingEditRec(true)
+    await supabase.from('recepciones').update({
+      estado: editRecForm.estado || undefined,
+      conf_almacen: editRecForm.conf_almacen || null,
+      motivo_conf_almacen: editRecForm.motivo_conf_almacen || null,
+      cantidad_recibida: parseFloat(editRecForm.cantidad_recibida) || editRec.cantidad_recibida,
+      fecha_recepcion: editRecForm.fecha_recepcion || null,
+      erp_inta_entrada: editRecForm.erp_inta_entrada || null,
+      notas: editRecForm.notas || null,
+    }).eq('id', editRec.id)
+    setSavingEditRec(false)
+    setEditRec(null)
+    loadTab()
+  }
+
+  async function handleDeleteRec() {
+    if (!deleteRec) return
+    setDeletingRec(true)
+    await supabase.from('recepciones').delete().eq('id', deleteRec.id)
+    setDeletingRec(false)
+    setDeleteRec(null)
+    loadTab()
+  }
+
+  // ── Editar / Eliminar Despacho ────────────────────────────────────────
+  const [editDesp, setEditDesp] = useState<Despacho | null>(null)
+  const [editDespForm, setEditDespForm] = useState({
+    estado: '' as Despacho['estado'] | '',
+    distrito_despacho: '',
+    fecha_despacho: '',
+    erp_inta_salida: '',
+    notas: '',
+  })
+  const [savingEditDesp, setSavingEditDesp] = useState(false)
+  const [deleteDesp, setDeleteDesp] = useState<Despacho | null>(null)
+  const [deletingDesp, setDeletingDesp] = useState(false)
+
+  function openEditDesp(d: Despacho) {
+    setEditDespForm({
+      estado: d.estado,
+      distrito_despacho: d.distrito_despacho ?? '',
+      fecha_despacho: d.fecha_despacho ?? '',
+      erp_inta_salida: d.erp_inta_salida ?? '',
+      notas: d.notas ?? '',
+    })
+    setEditDesp(d)
+  }
+
+  async function handleSaveEditDesp() {
+    if (!editDesp) return
+    setSavingEditDesp(true)
+    await supabase.from('despachos').update({
+      estado: editDespForm.estado || undefined,
+      distrito_despacho: editDespForm.distrito_despacho || null,
+      fecha_despacho: editDespForm.fecha_despacho || null,
+      erp_inta_salida: editDespForm.erp_inta_salida || null,
+      notas: editDespForm.notas || null,
+    }).eq('id', editDesp.id)
+    setSavingEditDesp(false)
+    setEditDesp(null)
+    loadTab()
+  }
+
+  async function handleDeleteDesp() {
+    if (!deleteDesp) return
+    setDeletingDesp(true)
+    await supabase.from('despachos').delete().eq('id', deleteDesp.id)
+    setDeletingDesp(false)
+    setDeleteDesp(null)
+    loadTab()
+  }
+
   // ── Despacho ──────────────────────────────────────────────────────────
   const [showDesp, setShowDesp] = useState(false)
   const [despForm, setDespForm] = useState<DespachoForm>(defaultDesp)
@@ -146,7 +248,7 @@ export function Almacen() {
       .not('status', 'in', '("Cerrado","Anulado")')
       .order('created_at', { ascending: false })
       .limit(200)
-      .then(({ data }) => setOcList((data ?? []) as OCListItem[]))
+      .then(({ data }) => setOcList((data ?? []) as unknown as OCListItem[]))
   }, [showRec])
 
   // ── Load OC items when OC changes ─────────────────────────────────────
@@ -442,6 +544,12 @@ export function Almacen() {
               { key: 'unidad_medida',    label: 'UM',       width: 50 },
               { key: 'fecha_recepcion',  label: 'Fecha',    render: r => <span className="mono">{fmtDate(r.fecha_recepcion as string)}</span> },
               { key: 'estado',           label: 'Estado',   render: r => <StatusBadge status={r.estado as string} mapping={RECEPCION_STATUS_TONE} /> },
+              { key: '_actions', label: '', width: 56, render: r => (
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button className="btn ghost xs" onClick={e => { e.stopPropagation(); openEditRec(r as unknown as Recepcion) }} title="Editar"><Icon name="edit" size={12} /></button>
+                  <button className="btn ghost xs" style={{ color: 'var(--bad)' }} onClick={e => { e.stopPropagation(); setDeleteRec(r as unknown as Recepcion) }} title="Eliminar"><Icon name="trash" size={12} /></button>
+                </div>
+              )},
             ] as Column<Record<string, unknown>>[]}
             rows={recepciones as unknown as Record<string, unknown>[]}
             idKey="id"
@@ -465,6 +573,12 @@ export function Almacen() {
               { key: 'fecha_despacho',   label: 'F. despacho',  render: r => <span className="mono">{fmtDate(r.fecha_despacho as string)}</span> },
               { key: 'erp_inta_salida',  label: 'ERP Salida',   render: r => <span className="mono">{r.erp_inta_salida as string ?? '—'}</span> },
               { key: 'estado',           label: 'Estado',       render: r => <StatusBadge status={r.estado as string} mapping={DESPACHO_STATUS_TONE} /> },
+              { key: '_actions', label: '', width: 56, render: r => (
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button className="btn ghost xs" onClick={e => { e.stopPropagation(); openEditDesp(r as unknown as Despacho) }} title="Editar"><Icon name="edit" size={12} /></button>
+                  <button className="btn ghost xs" style={{ color: 'var(--bad)' }} onClick={e => { e.stopPropagation(); setDeleteDesp(r as unknown as Despacho) }} title="Eliminar"><Icon name="trash" size={12} /></button>
+                </div>
+              )},
             ] as Column<Record<string, unknown>>[]}
             rows={despachos as unknown as Record<string, unknown>[]}
             idKey="id"
@@ -872,6 +986,143 @@ export function Almacen() {
             <textarea className="input" rows={2} value={despForm.notas} onChange={e => setDespForm(d => ({ ...d, notas: e.target.value }))} style={{ width: '100%', resize: 'vertical' }} />
           </div>
         </div>
+      </Modal>
+
+      {/* ── Modal: Editar recepción ───────────────────────────────────── */}
+      <Modal
+        open={!!editRec}
+        onClose={() => setEditRec(null)}
+        title="Editar Recepción"
+        size="sm"
+        footer={
+          <>
+            <button className="btn" onClick={() => setEditRec(null)}>Cancelar</button>
+            <button className="btn primary" onClick={handleSaveEditRec} disabled={savingEditRec}>
+              {savingEditRec ? 'Guardando…' : 'Guardar'}
+            </button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div className="form-field">
+            <label className="form-label">Estado</label>
+            <select className="select" value={editRecForm.estado} onChange={e => setEditRecForm(f => ({ ...f, estado: e.target.value as Recepcion['estado'] }))} style={{ width: '100%' }}>
+              {(['Pendiente','Recibido parcial','Recibido completo','Observado'] as Recepcion['estado'][]).map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="form-field">
+            <label className="form-label">Conformidad almacén</label>
+            <select className="select" value={editRecForm.conf_almacen} onChange={e => setEditRecForm(f => ({ ...f, conf_almacen: e.target.value as ConformidadRecepcion }))} style={{ width: '100%' }}>
+              <option value="">— Sin especificar —</option>
+              <option value="Conforme">Conforme</option>
+              <option value="Observado">Observado</option>
+              <option value="Rechazado">Rechazado</option>
+            </select>
+          </div>
+          {editRecForm.conf_almacen && editRecForm.conf_almacen !== 'Conforme' && (
+            <div className="form-field">
+              <label className="form-label">Motivo</label>
+              <textarea className="input" rows={2} value={editRecForm.motivo_conf_almacen} onChange={e => setEditRecForm(f => ({ ...f, motivo_conf_almacen: e.target.value }))} style={{ width: '100%', resize: 'vertical' }} />
+            </div>
+          )}
+          <div className="form-field">
+            <label className="form-label">Cantidad recibida</label>
+            <input type="number" className="input" value={editRecForm.cantidad_recibida} onChange={e => setEditRecForm(f => ({ ...f, cantidad_recibida: e.target.value }))} style={{ width: '100%' }} step="any" min="0" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Fecha recepción</label>
+            <input type="date" className="input" value={editRecForm.fecha_recepcion} onChange={e => setEditRecForm(f => ({ ...f, fecha_recepcion: e.target.value }))} style={{ width: '100%' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">N° ERP / INTA Entrada</label>
+            <input className="input" value={editRecForm.erp_inta_entrada} onChange={e => setEditRecForm(f => ({ ...f, erp_inta_entrada: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Notas</label>
+            <textarea className="input" rows={2} value={editRecForm.notas} onChange={e => setEditRecForm(f => ({ ...f, notas: e.target.value }))} style={{ width: '100%', resize: 'vertical' }} />
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Modal: Confirmar eliminación recepción ────────────────────── */}
+      <Modal
+        open={!!deleteRec}
+        onClose={() => setDeleteRec(null)}
+        title="Eliminar Recepción"
+        size="sm"
+        footer={
+          <>
+            <button className="btn" onClick={() => setDeleteRec(null)}>Cancelar</button>
+            <button className="btn" style={{ background: 'var(--bad)', color: '#fff' }} onClick={handleDeleteRec} disabled={deletingRec}>
+              {deletingRec ? 'Eliminando…' : 'Eliminar'}
+            </button>
+          </>
+        }
+      >
+        <p style={{ fontSize: 13.5 }}>
+          ¿Eliminar la recepción de <strong>{deleteRec?.codigo_comercial}</strong>? Esta acción no se puede deshacer.
+        </p>
+      </Modal>
+
+      {/* ── Modal: Editar despacho ────────────────────────────────────── */}
+      <Modal
+        open={!!editDesp}
+        onClose={() => setEditDesp(null)}
+        title="Editar Despacho"
+        size="sm"
+        footer={
+          <>
+            <button className="btn" onClick={() => setEditDesp(null)}>Cancelar</button>
+            <button className="btn primary" onClick={handleSaveEditDesp} disabled={savingEditDesp}>
+              {savingEditDesp ? 'Guardando…' : 'Guardar'}
+            </button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div className="form-field">
+            <label className="form-label">Estado</label>
+            <select className="select" value={editDespForm.estado} onChange={e => setEditDespForm(f => ({ ...f, estado: e.target.value as Despacho['estado'] }))} style={{ width: '100%' }}>
+              {(['Preparando','En transporte','Entregado','Observado','Anulado'] as Despacho['estado'][]).map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="form-field">
+            <label className="form-label">Distrito despacho</label>
+            <input className="input" value={editDespForm.distrito_despacho} onChange={e => setEditDespForm(f => ({ ...f, distrito_despacho: e.target.value }))} style={{ width: '100%' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Fecha despacho</label>
+            <input type="date" className="input" value={editDespForm.fecha_despacho} onChange={e => setEditDespForm(f => ({ ...f, fecha_despacho: e.target.value }))} style={{ width: '100%' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">ERP Salida</label>
+            <input className="input" value={editDespForm.erp_inta_salida} onChange={e => setEditDespForm(f => ({ ...f, erp_inta_salida: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Notas</label>
+            <textarea className="input" rows={2} value={editDespForm.notas} onChange={e => setEditDespForm(f => ({ ...f, notas: e.target.value }))} style={{ width: '100%', resize: 'vertical' }} />
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Modal: Confirmar eliminación despacho ─────────────────────── */}
+      <Modal
+        open={!!deleteDesp}
+        onClose={() => setDeleteDesp(null)}
+        title="Eliminar Despacho"
+        size="sm"
+        footer={
+          <>
+            <button className="btn" onClick={() => setDeleteDesp(null)}>Cancelar</button>
+            <button className="btn" style={{ background: 'var(--bad)', color: '#fff' }} onClick={handleDeleteDesp} disabled={deletingDesp}>
+              {deletingDesp ? 'Eliminando…' : 'Eliminar'}
+            </button>
+          </>
+        }
+      >
+        <p style={{ fontSize: 13.5 }}>
+          ¿Eliminar el despacho de <strong>{deleteDesp?.codigo_comercial}</strong>? Esta acción no se puede deshacer.
+        </p>
       </Modal>
 
       {/* ── Modal: Guía de remisión rápida (post-despacho) ─────────────── */}

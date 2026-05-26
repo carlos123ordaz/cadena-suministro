@@ -88,6 +88,20 @@ button { font-family: inherit; }
 }
 .app-sidebar {
   grid-row: 1 / span 2;
+  /* always-dark token overrides */
+  --panel:       #0f172a;
+  --panel-2:     #111b2e;
+  --border:      #1e293b;
+  --text:        #e2e8f0;
+  --text-2:      #94a3b8;
+  --text-3:      #475569;
+  --accent:      #3b82f6;
+  --accent-soft: rgba(59,130,246,0.14);
+  --muted-soft:  rgba(148,163,184,0.10);
+  --ok:          #4ade80;
+  --ok-soft:     rgba(74,222,128,0.14);
+  --warn:        #fbbf24;
+  --warn-soft:   rgba(251,191,36,0.14);
   background: var(--panel);
   border-right: 1px solid var(--border);
   display: flex;

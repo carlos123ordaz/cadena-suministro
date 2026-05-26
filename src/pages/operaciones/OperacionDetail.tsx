@@ -88,6 +88,7 @@ export function OperacionDetail() {
   const [itemForm, setItemForm] = useState({
     item_op: '',
     producto_id: '',
+    producto_tipo: '',
     codigo_comercial: '',
     descripcion: '',
     cantidad: '',
@@ -105,7 +106,13 @@ export function OperacionDetail() {
     centro_costo: '',
     subcentro_costo: '',
     sub_sub_centro_costo: '',
+    t_e_semanas: '',
+    numero_servicio: '',
+    numero_proyecto: '',
+    precio_total_estimado: '',
   })
+  const [itemNotas, setItemNotas] = useState<string[]>([])
+  const [itemNotaInput, setItemNotaInput] = useState('')
   const [productosSearch, setProductosSearch] = useState('')
   const [productosSugeridos, setProductosSugeridos] = useState<Producto[]>([])
   const [showProductosDrop, setShowProductosDrop] = useState(false)
@@ -144,7 +151,7 @@ export function OperacionDetail() {
     const t = setTimeout(async () => {
       const { data } = await supabase
         .from('productos')
-        .select('id, codigo_comercial, descripcion, unidad_medida, marca')
+        .select('id, codigo_comercial, descripcion, unidad_medida, marca, tipo')
         .or(`codigo_comercial.ilike.%${productosSearch}%,descripcion.ilike.%${productosSearch}%`)
         .eq('activo', true)
         .limit(20)
@@ -157,9 +164,13 @@ export function OperacionDetail() {
     setItemForm(f => ({
       ...f,
       producto_id: p.id,
+      producto_tipo: p.tipo ?? '',
       codigo_comercial: p.codigo_comercial,
       descripcion: p.descripcion,
       unidad_medida: p.unidad_medida ?? f.unidad_medida,
+      numero_servicio: '',
+      numero_proyecto: '',
+      precio_total_estimado: '',
     }))
     setProductosSearch(p.codigo_comercial)
     setProductosSugeridos([])
@@ -167,7 +178,7 @@ export function OperacionDetail() {
   }
 
   function clearProducto() {
-    setItemForm(f => ({ ...f, producto_id: '', codigo_comercial: '', descripcion: '' }))
+    setItemForm(f => ({ ...f, producto_id: '', producto_tipo: '', codigo_comercial: '', descripcion: '', numero_servicio: '', numero_proyecto: '', precio_total_estimado: '' }))
     setProductosSearch('')
     setProductosSugeridos([])
   }
@@ -175,7 +186,7 @@ export function OperacionDetail() {
   async function handleProductoFocus() {
     const { data } = await supabase
       .from('productos')
-      .select('id, codigo_comercial, descripcion, unidad_medida, marca')
+      .select('id, codigo_comercial, descripcion, unidad_medida, marca, tipo')
       .eq('activo', true)
       .order('codigo_comercial')
       .limit(20)
@@ -191,7 +202,7 @@ export function OperacionDetail() {
     setSavingItem(true)
     const cantidad = parseFloat(itemForm.cantidad)
     const precio = parseFloat(itemForm.precio_unitario)
-    const { error } = await supabase.from('operacion_items').insert({
+    const { data: itemCreado, error } = await supabase.from('operacion_items').insert({
       operacion_id: operacionId,
       producto_id: itemForm.producto_id || null,
       item_op: itemForm.item_op || null,
@@ -213,18 +224,30 @@ export function OperacionDetail() {
       centro_costo: itemForm.centro_costo || null,
       subcentro_costo: itemForm.subcentro_costo || null,
       sub_sub_centro_costo: itemForm.sub_sub_centro_costo || null,
+      t_e_semanas: itemForm.t_e_semanas ? parseFloat(itemForm.t_e_semanas) : null,
+      numero_servicio: itemForm.numero_servicio || null,
+      numero_proyecto: itemForm.numero_proyecto || null,
+      precio_total_estimado: itemForm.precio_total_estimado ? parseFloat(itemForm.precio_total_estimado) : null,
       estado: 'Pendiente',
-    })
+    }).select('id').single()
+    if (error) { setSavingItem(false); setItemError((error as Error).message ?? 'Error al guardar.'); return }
+    if (itemCreado?.id && itemNotas.length > 0 && profile) {
+      await supabase.from('operacion_item_notas').insert(
+        itemNotas.map(nota => ({ operacion_item_id: (itemCreado as { id: string }).id, nota, usuario_id: profile.id }))
+      )
+    }
     setSavingItem(false)
-    if (error) { setItemError((error as Error).message ?? 'Error al guardar.'); return }
     setShowAddItem(false)
     setItemForm({
-      item_op: '', producto_id: '', codigo_comercial: '', descripcion: '',
+      item_op: '', producto_id: '', producto_tipo: '', codigo_comercial: '', descripcion: '',
       cantidad: '', unidad_medida: '', moneda: op?.moneda ?? 'USD', precio_unitario: '',
       tc_usd: '', tipo_negocio: '', sub_tipo_negocio: '', sub_tipo_negocio_2: '',
       fecha_req_cliente: '', requiere_armado: false, codigo_cliente: '', num_deal: '',
       centro_costo: '', subcentro_costo: '', sub_sub_centro_costo: '',
+      t_e_semanas: '', numero_servicio: '', numero_proyecto: '', precio_total_estimado: '',
     })
+    setItemNotas([])
+    setItemNotaInput('')
     setProductosSearch('')
     load()
   }
@@ -609,7 +632,7 @@ export function OperacionDetail() {
       {/* Modal agregar ítem */}
       <Modal
         open={showAddItem}
-        onClose={() => { setShowAddItem(false); setItemError(null); setProductosSearch(''); setProductosSugeridos([]) }}
+        onClose={() => { setShowAddItem(false); setItemError(null); setProductosSearch(''); setProductosSugeridos([]); setItemNotas([]); setItemNotaInput('') }}
         title="Agregar ítem a la operación"
         subtitle={op?.correlativo_opci}
         size="xl"
@@ -681,7 +704,7 @@ export function OperacionDetail() {
                     <span className="mono" style={{ color: 'var(--accent-2)', marginRight: 8, fontWeight: 600 }}>{p.codigo_comercial}</span>
                     <span style={{ fontSize: 12 }}>{p.descripcion}</span>
                     {p.marca && <span className="tiny muted" style={{ marginLeft: 8 }}>{p.marca}</span>}
-                    <Badge tone="muted" style={{ marginLeft: 8, fontSize: 10 }}>{p.unidad_medida}</Badge>
+                    <span style={{ marginLeft: 8, fontSize: 10 }}><Badge tone="muted">{p.unidad_medida}</Badge></span>
                   </div>
                 ))}
               </div>
@@ -817,6 +840,75 @@ export function OperacionDetail() {
             <label className="form-label">Sub sub centro de costo</label>
             <input className="input" value={itemForm.sub_sub_centro_costo} onChange={e => setItemForm(f => ({ ...f, sub_sub_centro_costo: e.target.value }))} style={{ width: '100%' }} />
           </div>
+
+          {/* Tiempo en semanas — siempre visible */}
+          <div className="form-field">
+            <label className="form-label">Tiempo en semanas (T/E)</label>
+            <input type="number" className="input" value={itemForm.t_e_semanas} onChange={e => setItemForm(f => ({ ...f, t_e_semanas: e.target.value }))} style={{ width: '100%' }} step="0.5" min="0" placeholder="Ej: 4" />
+          </div>
+
+          {/* Campos condicionales por tipo de producto */}
+          {itemForm.producto_tipo === 'Servicio' && (
+            <div className="form-field">
+              <label className="form-label">N° de Servicio</label>
+              <input className="input" value={itemForm.numero_servicio} onChange={e => setItemForm(f => ({ ...f, numero_servicio: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} placeholder="SRV-001" />
+            </div>
+          )}
+          {itemForm.producto_tipo === 'Proyecto' && (
+            <>
+              <div className="form-field">
+                <label className="form-label">N° de Proyecto</label>
+                <input className="input" value={itemForm.numero_proyecto} onChange={e => setItemForm(f => ({ ...f, numero_proyecto: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} placeholder="PRY-001" />
+              </div>
+              <div className="form-field">
+                <label className="form-label">Precio total estimado</label>
+                <input type="number" className="input" value={itemForm.precio_total_estimado} onChange={e => setItemForm(f => ({ ...f, precio_total_estimado: e.target.value }))} style={{ width: '100%' }} step="0.01" min="0" />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Notas del ítem */}
+        <div style={{ marginTop: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
+            Notas del ítem
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            <input
+              className="input"
+              value={itemNotaInput}
+              onChange={e => setItemNotaInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && itemNotaInput.trim()) {
+                  e.preventDefault()
+                  setItemNotas(n => [...n, itemNotaInput.trim()])
+                  setItemNotaInput('')
+                }
+              }}
+              placeholder="Escribe una nota y presiona Agregar o Enter…"
+              style={{ flex: 1 }}
+            />
+            <button
+              type="button"
+              className="btn sm"
+              disabled={!itemNotaInput.trim()}
+              onClick={() => { setItemNotas(n => [...n, itemNotaInput.trim()]); setItemNotaInput('') }}
+            >
+              <Icon name="plus" size={12} /> Agregar
+            </button>
+          </div>
+          {itemNotas.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {itemNotas.map((nota, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: 'var(--panel-2)', border: '1px solid var(--border)', borderRadius: 6, padding: '7px 10px' }}>
+                  <span style={{ flex: 1, fontSize: 12.5, lineHeight: 1.5, color: 'var(--text-1)' }}>{nota}</span>
+                  <button type="button" className="btn ghost xs" style={{ flexShrink: 0 }} onClick={() => setItemNotas(n => n.filter((_, j) => j !== i))}>
+                    <Icon name="x" size={11} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </Modal>
 

@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Icon, Card, DataTable, StatusBadge, OPCI_STATUS_TONE, EtaCell, Badge } from '@/components/ui'
+import { Icon, Card, DataTable, StatusBadge, OPCI_STATUS_TONE, EtaCell, Badge, Modal } from '@/components/ui'
 import type { Column } from '@/components/ui'
 import { getOperaciones } from '@/services/operaciones.service'
 import { getClientes } from '@/services/clientes.service'
+import { supabase } from '@/lib/supabase'
 import { money, fmtDate, initials } from '@/lib/utils'
 import type { Operacion, Cliente, EstadoOPCI } from '@/types'
 
@@ -32,6 +33,12 @@ export function OperacionesList({ onCreateNew }: Props) {
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
 
+  const [editRow, setEditRow] = useState<Operacion | null>(null)
+  const [editForm, setEditForm] = useState({ estado: '' as EstadoOPCI | '', fecha_recepcion: '', numero_op: '', forma_pago: '' })
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [deleteRow, setDeleteRow] = useState<Operacion | null>(null)
+  const [deletingRow, setDeletingRow] = useState(false)
+
   const load = useCallback(async () => {
     setLoading(true)
     const { data, count } = await getOperaciones(
@@ -46,6 +53,34 @@ export function OperacionesList({ onCreateNew }: Props) {
 
   useEffect(() => { load() }, [load])
   useEffect(() => { getClientes().then(r => setClientes(r.data ?? [])) }, [])
+
+  function openEdit(r: Operacion) {
+    setEditForm({ estado: r.estado, fecha_recepcion: r.fecha_recepcion ?? '', numero_op: r.numero_op ?? '', forma_pago: r.forma_pago ?? '' })
+    setEditRow(r)
+  }
+
+  async function handleSaveEdit() {
+    if (!editRow) return
+    setSavingEdit(true)
+    await supabase.from('operaciones').update({
+      estado: editForm.estado || undefined,
+      fecha_recepcion: editForm.fecha_recepcion || undefined,
+      numero_op: editForm.numero_op || undefined,
+      forma_pago: editForm.forma_pago || undefined,
+    }).eq('id', editRow.id)
+    setSavingEdit(false)
+    setEditRow(null)
+    load()
+  }
+
+  async function handleDelete() {
+    if (!deleteRow) return
+    setDeletingRow(true)
+    await supabase.from('operaciones').delete().eq('id', deleteRow.id)
+    setDeletingRow(false)
+    setDeleteRow(null)
+    load()
+  }
 
   const columns: Column<Operacion>[] = [
     {
@@ -102,11 +137,19 @@ export function OperacionesList({ onCreateNew }: Props) {
       render: r => <StatusBadge status={r.estado} mapping={OPCI_STATUS_TONE} />,
     },
     {
-      key: '_act', label: '', width: 40,
+      key: '_act', label: '', width: 88,
       render: r => (
-        <button className="btn ghost xs" onClick={() => navigate(`/operaciones/${r.id}`)} title="Ver detalle">
-          <Icon name="chevron" size={12} />
-        </button>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button className="btn ghost xs" onClick={e => { e.stopPropagation(); openEdit(r) }} title="Editar">
+            <Icon name="edit" size={12} />
+          </button>
+          <button className="btn ghost xs" style={{ color: 'var(--bad)' }} onClick={e => { e.stopPropagation(); setDeleteRow(r) }} title="Eliminar">
+            <Icon name="trash" size={12} />
+          </button>
+          <button className="btn ghost xs" onClick={e => { e.stopPropagation(); navigate(`/operaciones/${r.id}`) }} title="Ver detalle">
+            <Icon name="chevron" size={12} />
+          </button>
+        </div>
       ),
     },
   ]
@@ -169,6 +212,61 @@ export function OperacionesList({ onCreateNew }: Props) {
           onRowClick={r => navigate(`/operaciones/${(r as unknown as Operacion).id}`)}
           emptyMessage="No hay operaciones que coincidan con los filtros"
         />
+
+      <Modal
+        open={!!editRow}
+        onClose={() => setEditRow(null)}
+        title="Editar Operación"
+        size="sm"
+        footer={
+          <>
+            <button className="btn" onClick={() => setEditRow(null)}>Cancelar</button>
+            <button className="btn primary" onClick={handleSaveEdit} disabled={savingEdit}>
+              {savingEdit ? 'Guardando…' : 'Guardar'}
+            </button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div className="form-field">
+            <label className="form-label">Estado</label>
+            <select className="select" value={editForm.estado} onChange={e => setEditForm(f => ({ ...f, estado: e.target.value as EstadoOPCI }))} style={{ width: '100%' }}>
+              {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="form-field">
+            <label className="form-label">Fecha recepción</label>
+            <input type="date" className="input" value={editForm.fecha_recepcion} onChange={e => setEditForm(f => ({ ...f, fecha_recepcion: e.target.value }))} style={{ width: '100%' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">N° OP cliente</label>
+            <input className="input" value={editForm.numero_op} onChange={e => setEditForm(f => ({ ...f, numero_op: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Forma de pago</label>
+            <input className="input" value={editForm.forma_pago} onChange={e => setEditForm(f => ({ ...f, forma_pago: e.target.value }))} style={{ width: '100%' }} />
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!deleteRow}
+        onClose={() => setDeleteRow(null)}
+        title="Eliminar Operación"
+        size="sm"
+        footer={
+          <>
+            <button className="btn" onClick={() => setDeleteRow(null)}>Cancelar</button>
+            <button className="btn" style={{ background: 'var(--bad)', color: '#fff' }} onClick={handleDelete} disabled={deletingRow}>
+              {deletingRow ? 'Eliminando…' : 'Eliminar'}
+            </button>
+          </>
+        }
+      >
+        <p style={{ fontSize: 13.5 }}>
+          ¿Eliminar la operación <strong>{deleteRow?.correlativo_opci}</strong>? Esta acción no se puede deshacer.
+        </p>
+      </Modal>
 
         <div className="table-footer">
           <span>{total} registros totales</span>

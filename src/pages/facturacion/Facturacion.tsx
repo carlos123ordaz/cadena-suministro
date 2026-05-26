@@ -48,6 +48,60 @@ export function Facturacion() {
   const [nuevoEstadoFact, setNuevoEstadoFact] = useState<EstadoFactura | ''>('')
   const [savingEstadoFact, setSavingEstadoFact] = useState(false)
 
+  const [editRow, setEditRow] = useState<FacturaVenta | null>(null)
+  const [editForm, setEditForm] = useState({
+    num_factura: '', fecha_emision: '', fecha_prometida_pago: '', moneda: 'USD',
+    monto_total_sin_igv: '', factor_igv: '1.18', forma_pago: '', dias_cobranza: '',
+    status: '' as EstadoFactura | '',
+  })
+  const [savingEditFact, setSavingEditFact] = useState(false)
+
+  const [deleteRow, setDeleteRow] = useState<FacturaVenta | null>(null)
+  const [deletingRow, setDeletingRow] = useState(false)
+
+  function openEditFact(r: FacturaVenta) {
+    setEditForm({
+      num_factura: r.num_factura ?? '',
+      fecha_emision: r.fecha_emision ?? '',
+      fecha_prometida_pago: r.fecha_prometida_pago ?? '',
+      moneda: r.moneda ?? 'USD',
+      monto_total_sin_igv: r.monto_total_sin_igv?.toString() ?? '',
+      factor_igv: r.factor_igv?.toString() ?? '1.18',
+      forma_pago: r.forma_pago ?? '',
+      dias_cobranza: r.dias_cobranza?.toString() ?? '',
+      status: r.status,
+    })
+    setEditRow(r)
+  }
+
+  async function handleSaveEditFact() {
+    if (!editRow) return
+    setSavingEditFact(true)
+    await supabase.from('facturas').update({
+      num_factura: editForm.num_factura || undefined,
+      fecha_emision: editForm.fecha_emision || null,
+      fecha_prometida_pago: editForm.fecha_prometida_pago || null,
+      moneda: editForm.moneda,
+      monto_total_sin_igv: parseFloat(editForm.monto_total_sin_igv) || 0,
+      factor_igv: parseFloat(editForm.factor_igv) || 1.18,
+      forma_pago: editForm.forma_pago || null,
+      dias_cobranza: editForm.dias_cobranza ? parseInt(editForm.dias_cobranza) : null,
+      status: editForm.status || undefined,
+    }).eq('id', editRow.id)
+    setSavingEditFact(false)
+    setEditRow(null)
+    load()
+  }
+
+  async function handleDeleteFact() {
+    if (!deleteRow) return
+    setDeletingRow(true)
+    await supabase.from('facturas').delete().eq('id', deleteRow.id)
+    setDeletingRow(false)
+    setDeleteRow(null)
+    load()
+  }
+
   const load = useCallback(async () => {
     setLoading(true)
     const { data, count } = await getFacturas({
@@ -195,6 +249,19 @@ export function Facturacion() {
           <Icon name="dollar" size={11} /> Pago
         </button>
       ) : null,
+    },
+    {
+      key: '_actions', label: '', width: 56,
+      render: r => (
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button className="btn ghost xs" onClick={e => { e.stopPropagation(); openEditFact(r) }} title="Editar">
+            <Icon name="edit" size={12} />
+          </button>
+          <button className="btn ghost xs" style={{ color: 'var(--bad)' }} onClick={e => { e.stopPropagation(); setDeleteRow(r) }} title="Eliminar">
+            <Icon name="trash" size={12} />
+          </button>
+        </div>
+      ),
     },
   ]
 
@@ -478,6 +545,85 @@ export function Facturacion() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Modal: Editar factura */}
+      <Modal
+        open={!!editRow}
+        onClose={() => setEditRow(null)}
+        title="Editar Factura"
+        size="md"
+        footer={
+          <>
+            <button className="btn" onClick={() => setEditRow(null)}>Cancelar</button>
+            <button className="btn primary" onClick={handleSaveEditFact} disabled={savingEditFact || !editForm.num_factura}>
+              {savingEditFact ? 'Guardando…' : 'Guardar'}
+            </button>
+          </>
+        }
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div className="form-field">
+            <label className="form-label">N° Factura *</label>
+            <input className="input" value={editForm.num_factura} onChange={e => setEditForm(f => ({ ...f, num_factura: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Estado</label>
+            <select className="select" value={editForm.status} onChange={e => setEditForm(f => ({ ...f, status: e.target.value as EstadoFactura }))} style={{ width: '100%' }}>
+              {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="form-field">
+            <label className="form-label">Fecha emisión</label>
+            <input type="date" className="input" value={editForm.fecha_emision} onChange={e => setEditForm(f => ({ ...f, fecha_emision: e.target.value }))} style={{ width: '100%' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Fecha prometida de pago</label>
+            <input type="date" className="input" value={editForm.fecha_prometida_pago} onChange={e => setEditForm(f => ({ ...f, fecha_prometida_pago: e.target.value }))} style={{ width: '100%' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Moneda</label>
+            <select className="select" value={editForm.moneda} onChange={e => setEditForm(f => ({ ...f, moneda: e.target.value }))} style={{ width: '100%' }}>
+              <option value="USD">USD</option><option value="PEN">PEN</option><option value="EUR">EUR</option>
+            </select>
+          </div>
+          <div className="form-field">
+            <label className="form-label">Monto sin IGV</label>
+            <input type="number" className="input" value={editForm.monto_total_sin_igv} onChange={e => setEditForm(f => ({ ...f, monto_total_sin_igv: e.target.value }))} style={{ width: '100%' }} step="0.01" min="0" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Factor IGV</label>
+            <input type="number" className="input" value={editForm.factor_igv} onChange={e => setEditForm(f => ({ ...f, factor_igv: e.target.value }))} style={{ width: '100%' }} step="0.01" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Días de crédito</label>
+            <input type="number" className="input" value={editForm.dias_cobranza} onChange={e => setEditForm(f => ({ ...f, dias_cobranza: e.target.value }))} style={{ width: '100%' }} min="0" />
+          </div>
+          <div className="form-field" style={{ gridColumn: '1 / -1' }}>
+            <label className="form-label">Forma de pago</label>
+            <input className="input" value={editForm.forma_pago} onChange={e => setEditForm(f => ({ ...f, forma_pago: e.target.value }))} style={{ width: '100%' }} placeholder="30 días neto, Contado…" />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal: Confirmar eliminación factura */}
+      <Modal
+        open={!!deleteRow}
+        onClose={() => setDeleteRow(null)}
+        title="Eliminar Factura"
+        size="sm"
+        footer={
+          <>
+            <button className="btn" onClick={() => setDeleteRow(null)}>Cancelar</button>
+            <button className="btn" style={{ background: 'var(--bad)', color: '#fff' }} onClick={handleDeleteFact} disabled={deletingRow}>
+              {deletingRow ? 'Eliminando…' : 'Eliminar'}
+            </button>
+          </>
+        }
+      >
+        <p style={{ fontSize: 13.5 }}>
+          ¿Eliminar la factura <strong>{deleteRow?.num_factura}</strong>? Esta acción no se puede deshacer.
+        </p>
       </Modal>
 
       {profile && selected && (

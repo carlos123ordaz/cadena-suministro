@@ -177,6 +177,10 @@ export interface OperacionItem {
   centro_costo?: string
   subcentro_costo?: string
   sub_sub_centro_costo?: string
+  t_e_semanas?: number
+  numero_servicio?: string
+  numero_proyecto?: string
+  precio_total_estimado?: number
   estado: EstadoItem
   created_at: ISOTimestamp
   updated_at: ISOTimestamp
@@ -316,7 +320,6 @@ export interface OrdenCompraImportacion {
   num_confirmacion_proveedor?: string
   fecha_invoice?: ISODate
   num_invoice?: string
-  num_item_invoice?: string
   tipo_embarque?: string
   pais_embarque?: string
   ciudad_embarque?: string
@@ -348,6 +351,7 @@ export interface OrdenCompraImportacionItem {
   pcu2?: number
   tc_usd?: number
   monto_total: number
+  num_item_invoice?: string
   created_at: ISOTimestamp
 }
 
