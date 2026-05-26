@@ -6,7 +6,13 @@
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
       "Bash(npm run *)",
-      "Bash(xargs grep *)"
+      "Bash(xargs grep *)",
+      "Bash(git -C \"/d/BOOT/user/CORDAZ/Documents/proyectos/Cadena de suministro/web\" status)",
+      "Bash(git -C \"/d/BOOT/user/CORDAZ/Documents/proyectos/Cadena de suministro/web\" ls-files --others --exclude-standard)",
+      "Bash(git -C \"/d/BOOT/user/CORDAZ/Documents/proyectos/Cadena de suministro/web\" ls-files --others --exclude-standard src/components/ui/ public/)",
+      "Bash(git -C \"/d/BOOT/user/CORDAZ/Documents/proyectos/Cadena de suministro/web\" diff --name-only src/ index.html)",
+      "Bash(git -C \"/d/BOOT/user/CORDAZ/Documents/proyectos/Cadena de suministro/web\" log --oneline -5)",
+      "Bash(git -C \"/d/BOOT/user/CORDAZ/Documents/proyectos/Cadena de suministro/web\" show HEAD --stat)"
     ]
   }
 }
