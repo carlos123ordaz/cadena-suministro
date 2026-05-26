@@ -17,7 +17,7 @@ import { fmtDate, fmtDateTime, money, initials, fmtDbError } from '@/lib/utils'
 import type {
   Operacion, OperacionItem, OrdenCompraLocal, OrdenCompraImportacion,
   FacturaVenta, Recepcion, Despacho, GuiaRemision, HistorialEvento,
-  Comentario, DocumentoAdjunto, EstadoOPCI, Producto,
+  Comentario, DocumentoAdjunto, EstadoOPCI, EstadoItem, Producto,
   TipoNegocio, SubTipoNegocio, SubTipoNegocio2,
 } from '@/types'
 
@@ -77,6 +77,40 @@ export function OperacionDetail() {
 
   const [showUpload, setShowUpload] = useState(false)
 
+  // ── Edit encabezado ────────────────────────────────────────────────
+  const [showEditOp, setShowEditOp] = useState(false)
+  const [editOpForm, setEditOpForm] = useState({
+    fecha_recepcion: '', fecha_inicio: '', fecha_procesamiento_vi: '',
+    cliente_id: '', cliente_final_id: '', cliente_proveedor: '',
+    numero_op: '', numero_referencia_cliente: '',
+    moneda: 'USD', monto_total_sin_igv: '', u_bruta_coti: '',
+    forma_pago: '', comision_compartida: '',
+    vendedor1_id: '', vendedor2_id: '', lider_id: '',
+  })
+  const [savingEditOp, setSavingEditOp] = useState(false)
+  const [editOpError, setEditOpError] = useState<string | null>(null)
+  const [clientes, setClientes] = useState<{ id: string; razon_social: string; ruc?: string; ciudad?: string }[]>([])
+  const [vendedores, setVendedores] = useState<{ id: string; nombre_completo: string }[]>([])
+  const [proveedores, setProveedores] = useState<{ id: string; razon_social: string; pais?: string; ruc_nro_doc?: string }[]>([])
+  // combo search strings
+  const [editClienteSearch, setEditClienteSearch] = useState('')
+  const [showEditClienteDrop, setShowEditClienteDrop] = useState(false)
+  const [editClienteFinalSearch, setEditClienteFinalSearch] = useState('')
+  const [showEditClienteFinalDrop, setShowEditClienteFinalDrop] = useState(false)
+  const [showEditClienteProvDrop, setShowEditClienteProvDrop] = useState(false)
+  const [editVend1Search, setEditVend1Search] = useState('')
+  const [showEditVend1Drop, setShowEditVend1Drop] = useState(false)
+  const [editVend2Search, setEditVend2Search] = useState('')
+  const [showEditVend2Drop, setShowEditVend2Drop] = useState(false)
+  const [editLiderSearch, setEditLiderSearch] = useState('')
+  const [showEditLiderDrop, setShowEditLiderDrop] = useState(false)
+  const editClienteRef = useRef<HTMLDivElement>(null)
+  const editClienteFinalRef = useRef<HTMLDivElement>(null)
+  const editClienteProvRef = useRef<HTMLDivElement>(null)
+  const editVend1Ref = useRef<HTMLDivElement>(null)
+  const editVend2Ref = useRef<HTMLDivElement>(null)
+  const editLiderRef = useRef<HTMLDivElement>(null)
+
   const [showEstado, setShowEstado] = useState(false)
   const [nuevoEstado, setNuevoEstado] = useState<EstadoOPCI | ''>('')
   const [comentEstado, setComentEstado] = useState('')
@@ -125,6 +159,22 @@ export function OperacionDetail() {
   const umRef = useRef<HTMLDivElement>(null)
   const umSelectedRef = useRef('')
 
+  const [editItemRow, setEditItemRow] = useState<OperacionItem | null>(null)
+  const [editItemForm, setEditItemForm] = useState({
+    item_op: '', descripcion: '', cantidad: '', unidad_medida: '', moneda: 'USD',
+    precio_unitario: '', tc_usd: '', estado: '' as EstadoItem | '',
+    tipo_negocio: '' as TipoNegocio | '', sub_tipo_negocio: '' as SubTipoNegocio | '',
+    sub_tipo_negocio_2: '' as SubTipoNegocio2 | '',
+    fecha_req_cliente: '', requiere_armado: false,
+    codigo_cliente: '', num_deal: '', centro_costo: '', subcentro_costo: '', sub_sub_centro_costo: '',
+    t_e_semanas: '', numero_servicio: '', numero_proyecto: '', precio_total_estimado: '',
+  })
+  const [savingEditItem, setSavingEditItem] = useState(false)
+  const [editItemError, setEditItemError] = useState<string | null>(null)
+  const [deleteItemRow, setDeleteItemRow] = useState<OperacionItem | null>(null)
+  const [deletingItem, setDeletingItem] = useState(false)
+  const [deleteItemError, setDeleteItemError] = useState<string | null>(null)
+
   const load = useCallback(async () => {
     setLoading(true)
     const [opRes, histRes, comRes, docRes, ciRes] = await Promise.all([
@@ -163,10 +213,97 @@ export function OperacionDetail() {
         setShowUmDrop(false)
         setUmSearch(umSelectedRef.current)
       }
+      if (editClienteRef.current && !editClienteRef.current.contains(e.target as Node)) setShowEditClienteDrop(false)
+      if (editClienteFinalRef.current && !editClienteFinalRef.current.contains(e.target as Node)) setShowEditClienteFinalDrop(false)
+      if (editClienteProvRef.current && !editClienteProvRef.current.contains(e.target as Node)) setShowEditClienteProvDrop(false)
+      if (editVend1Ref.current && !editVend1Ref.current.contains(e.target as Node)) setShowEditVend1Drop(false)
+      if (editVend2Ref.current && !editVend2Ref.current.contains(e.target as Node)) setShowEditVend2Drop(false)
+      if (editLiderRef.current && !editLiderRef.current.contains(e.target as Node)) setShowEditLiderDrop(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
+
+  useEffect(() => {
+    if (!showEditOp || !op) return
+    setEditOpError(null)
+    setEditOpForm({
+      fecha_recepcion: op.fecha_recepcion ?? '',
+      fecha_inicio: op.fecha_inicio ?? '',
+      fecha_procesamiento_vi: op.fecha_procesamiento_vi ?? '',
+      cliente_id: op.cliente_id ?? '',
+      cliente_final_id: op.cliente_final_id ?? '',
+      cliente_proveedor: op.cliente_proveedor ?? '',
+      numero_op: op.numero_op ?? '',
+      numero_referencia_cliente: op.numero_referencia_cliente ?? '',
+      moneda: op.moneda ?? 'USD',
+      monto_total_sin_igv: op.monto_total_sin_igv != null ? String(op.monto_total_sin_igv) : '',
+      u_bruta_coti: op.u_bruta_coti != null ? String((op.u_bruta_coti * 100).toFixed(4)).replace(/\.?0+$/, '') : '',
+      forma_pago: op.forma_pago ?? '',
+      comision_compartida: op.comision_compartida ?? '',
+      vendedor1_id: op.vendedor1_id ?? '',
+      vendedor2_id: op.vendedor2_id ?? '',
+      lider_id: op.lider_id ?? '',
+    })
+    setEditClienteSearch(op.cliente?.razon_social ?? '')
+    setEditClienteFinalSearch(op.cliente_final?.razon_social ?? '')
+    setEditVend1Search(op.vendedor1?.nombre_completo ?? '')
+    setEditVend2Search(op.vendedor2?.nombre_completo ?? '')
+    setEditLiderSearch(op.lider?.nombre_completo ?? '')
+    // load combos
+    supabase.from('clientes').select('id, razon_social, ruc, ciudad').eq('activo', true).order('razon_social').limit(200)
+      .then(({ data }) => setClientes((data ?? []) as typeof clientes))
+    supabase.from('profiles').select('id, nombre_completo').eq('activo', true).eq('es_vendedor', true).order('nombre_completo')
+      .then(({ data }) => setVendedores((data ?? []) as typeof vendedores))
+    supabase.from('proveedores').select('id, razon_social, pais, ruc_nro_doc').order('razon_social').limit(200)
+      .then(({ data }) => setProveedores((data ?? []) as typeof proveedores))
+  }, [showEditOp])
+
+  function filterClientes(q: string) {
+    if (!q.trim()) return clientes.slice(0, 10)
+    const l = q.toLowerCase()
+    return clientes.filter(c => c.razon_social.toLowerCase().includes(l) || (c.ruc ?? '').includes(q)).slice(0, 10)
+  }
+  function filterVendedores(q: string) {
+    if (!q.trim()) return vendedores.slice(0, 15)
+    return vendedores.filter(v => v.nombre_completo.toLowerCase().includes(q.toLowerCase())).slice(0, 15)
+  }
+  function filterProveedores(q: string) {
+    if (!q.trim()) return proveedores.slice(0, 10)
+    const l = q.toLowerCase()
+    return proveedores.filter(p => p.razon_social.toLowerCase().includes(l) || (p.ruc_nro_doc ?? '').toLowerCase().includes(l)).slice(0, 10)
+  }
+
+  async function handleSaveEditOp() {
+    if (!editOpForm.cliente_id || !editOpForm.fecha_recepcion) {
+      setEditOpError('Cliente y fecha de recepción son obligatorios.')
+      return
+    }
+    setSavingEditOp(true)
+    setEditOpError(null)
+    const { error } = await supabase.from('operaciones').update({
+      fecha_recepcion: editOpForm.fecha_recepcion,
+      fecha_inicio: editOpForm.fecha_inicio || null,
+      fecha_procesamiento_vi: editOpForm.fecha_procesamiento_vi || null,
+      cliente_id: editOpForm.cliente_id,
+      cliente_final_id: editOpForm.cliente_final_id || null,
+      cliente_proveedor: editOpForm.cliente_proveedor || null,
+      numero_op: editOpForm.numero_op || null,
+      numero_referencia_cliente: editOpForm.numero_referencia_cliente || null,
+      moneda: editOpForm.moneda,
+      monto_total_sin_igv: parseFloat(editOpForm.monto_total_sin_igv) || 0,
+      u_bruta_coti: editOpForm.u_bruta_coti ? parseFloat(editOpForm.u_bruta_coti) / 100 : null,
+      forma_pago: editOpForm.forma_pago || null,
+      comision_compartida: editOpForm.comision_compartida || null,
+      vendedor1_id: editOpForm.vendedor1_id || null,
+      vendedor2_id: editOpForm.vendedor2_id || null,
+      lider_id: editOpForm.lider_id || null,
+    }).eq('id', operacionId)
+    setSavingEditOp(false)
+    if (error) { setEditOpError(fmtDbError(error, 'Error al guardar.')); return }
+    setShowEditOp(false)
+    load()
+  }
 
   async function handleCambiarEstado() {
     if (!nuevoEstado || !profile) return
@@ -289,6 +426,85 @@ export function OperacionDetail() {
     load()
   }
 
+  function openEditItem(r: OperacionItem) {
+    setEditItemError(null)
+    setEditItemForm({
+      item_op: r.item_op ?? '',
+      descripcion: r.descripcion ?? '',
+      cantidad: String(r.cantidad ?? ''),
+      unidad_medida: r.unidad_medida ?? '',
+      moneda: r.moneda ?? 'USD',
+      precio_unitario: String(r.precio_unitario ?? ''),
+      tc_usd: r.tc_usd != null ? String(r.tc_usd) : '',
+      estado: r.estado ?? '',
+      tipo_negocio: r.tipo_negocio ?? '',
+      sub_tipo_negocio: r.sub_tipo_negocio ?? '',
+      sub_tipo_negocio_2: r.sub_tipo_negocio_2 ?? '',
+      fecha_req_cliente: r.fecha_req_cliente ?? '',
+      requiere_armado: r.requiere_armado ?? false,
+      codigo_cliente: r.codigo_cliente ?? '',
+      num_deal: r.num_deal ?? '',
+      centro_costo: r.centro_costo ?? '',
+      subcentro_costo: r.subcentro_costo ?? '',
+      sub_sub_centro_costo: r.sub_sub_centro_costo ?? '',
+      t_e_semanas: r.t_e_semanas != null ? String(r.t_e_semanas) : '',
+      numero_servicio: r.numero_servicio ?? '',
+      numero_proyecto: r.numero_proyecto ?? '',
+      precio_total_estimado: r.precio_total_estimado != null ? String(r.precio_total_estimado) : '',
+    })
+    setEditItemRow(r)
+  }
+
+  async function handleSaveEditItem() {
+    if (!editItemRow) return
+    if (!editItemForm.descripcion.trim()) { setEditItemError('La descripción es requerida.'); return }
+    if (!editItemForm.cantidad || parseFloat(editItemForm.cantidad) <= 0) { setEditItemError('La cantidad debe ser mayor a 0.'); return }
+    setSavingEditItem(true)
+    setEditItemError(null)
+    const cantidad = parseFloat(editItemForm.cantidad)
+    const precio = parseFloat(editItemForm.precio_unitario) || 0
+    const { error } = await supabase.from('operacion_items').update({
+      item_op: editItemForm.item_op || null,
+      descripcion: editItemForm.descripcion.trim(),
+      cantidad,
+      unidad_medida: editItemForm.unidad_medida || null,
+      moneda: editItemForm.moneda || 'USD',
+      precio_unitario: precio,
+      tc_usd: editItemForm.tc_usd ? parseFloat(editItemForm.tc_usd) : null,
+      monto_total: cantidad * precio,
+      estado: editItemForm.estado || null,
+      tipo_negocio: editItemForm.tipo_negocio || null,
+      sub_tipo_negocio: editItemForm.sub_tipo_negocio || null,
+      sub_tipo_negocio_2: editItemForm.sub_tipo_negocio_2 || null,
+      fecha_req_cliente: editItemForm.fecha_req_cliente || null,
+      requiere_armado: editItemForm.requiere_armado,
+      codigo_cliente: editItemForm.codigo_cliente || null,
+      num_deal: editItemForm.num_deal || null,
+      centro_costo: editItemForm.centro_costo || null,
+      subcentro_costo: editItemForm.subcentro_costo || null,
+      sub_sub_centro_costo: editItemForm.sub_sub_centro_costo || null,
+      t_e_semanas: editItemForm.t_e_semanas ? parseFloat(editItemForm.t_e_semanas) : null,
+      numero_servicio: editItemForm.numero_servicio || null,
+      numero_proyecto: editItemForm.numero_proyecto || null,
+      precio_total_estimado: editItemForm.precio_total_estimado ? parseFloat(editItemForm.precio_total_estimado) : null,
+    }).eq('id', editItemRow.id)
+    setSavingEditItem(false)
+    if (error) { setEditItemError(fmtDbError(error, 'Error al guardar.')); return }
+    setEditItemRow(null)
+    load()
+  }
+
+  async function handleDeleteItem() {
+    if (!deleteItemRow) return
+    setDeletingItem(true)
+    setDeleteItemError(null)
+    const { error } = await supabase.from('operacion_items').delete().eq('id', deleteItemRow.id)
+    setDeletingItem(false)
+    if (error) { setDeleteItemError(fmtDbError(error, 'Error al eliminar.')); return }
+    setDeleteItemRow(null)
+    load()
+  }
+
   async function handleAddComentario() {
     if (!nuevoComentario.trim() || !profile) return
     setSavingComent(true)
@@ -380,6 +596,9 @@ export function OperacionDetail() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button className="btn sm" onClick={() => setShowEditOp(true)}>
+              <Icon name="edit" size={13} /> Editar
+            </button>
             {nextStates.length > 0 && (
               <button className="btn sm" onClick={() => setShowEstado(true)}>
                 <Icon name="refresh" size={13} /> Cambiar estado
@@ -438,6 +657,19 @@ export function OperacionDetail() {
               { key: 'precio_unitario', label: 'Precio U.', align: 'right', render: r => <span className="mono">{money(r.precio_unitario as number, r.moneda as string)}</span> },
               { key: 'monto_total',     label: 'Total', align: 'right', render: r => <span className="mono" style={{ fontWeight: 600 }}>{money(r.monto_total as number, r.moneda as string)}</span> },
               { key: 'estado',          label: 'Estado', render: r => <Badge tone="info">{r.estado as string}</Badge> },
+              {
+                key: '_actions', label: '', width: 72,
+                render: r => (
+                  <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
+                    <button className="btn ghost xs" title="Editar" onClick={() => openEditItem(r as unknown as OperacionItem)}>
+                      <Icon name="edit" size={12} />
+                    </button>
+                    <button className="btn ghost xs" title="Eliminar" style={{ color: 'var(--bad)' }} onClick={() => { setDeleteItemError(null); setDeleteItemRow(r as unknown as OperacionItem) }}>
+                      <Icon name="trash" size={12} />
+                    </button>
+                  </div>
+                ),
+              },
             ] as Column<Record<string, unknown>>[]}
             rows={(op.items ?? []) as unknown as Record<string, unknown>[]}
             idKey="id"
@@ -1003,6 +1235,407 @@ export function OperacionDetail() {
             </div>
           )}
         </div>
+      </Modal>
+
+      {/* Modal editar encabezado operación */}
+      <Modal
+        open={showEditOp}
+        onClose={() => setShowEditOp(false)}
+        title="Editar operación"
+        subtitle={op?.correlativo_opci}
+        size="lg"
+        footer={
+          <>
+            <button className="btn" onClick={() => setShowEditOp(false)}>Cancelar</button>
+            <button className="btn primary" onClick={handleSaveEditOp} disabled={savingEditOp}>
+              {savingEditOp ? 'Guardando…' : 'Guardar cambios'}
+            </button>
+          </>
+        }
+      >
+        {editOpError && (
+          <div style={{ background: 'var(--bad-soft)', border: '1px solid var(--bad)', borderRadius: 6, padding: '8px 12px', fontSize: 12.5, color: 'var(--bad)', marginBottom: 12 }}>
+            {editOpError}
+          </div>
+        )}
+
+        {(() => {
+          const dropStyle: React.CSSProperties = { position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', maxHeight: 220, overflowY: 'auto' }
+          const dropItem: React.CSSProperties = { padding: '8px 12px', cursor: 'pointer', fontSize: 12.5 }
+          const hl = (e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--panel-2)')
+          const ul = (e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')
+
+          return (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+
+              {/* Fecha recepción */}
+              <div className="form-field">
+                <label className="form-label">Fecha de recepción *</label>
+                <input type="date" className="input" value={editOpForm.fecha_recepcion} onChange={e => setEditOpForm(f => ({ ...f, fecha_recepcion: e.target.value }))} style={{ width: '100%' }} />
+              </div>
+
+              {/* Fecha inicio */}
+              <div className="form-field">
+                <label className="form-label">Fecha de inicio</label>
+                <input type="date" className="input" value={editOpForm.fecha_inicio} onChange={e => setEditOpForm(f => ({ ...f, fecha_inicio: e.target.value }))} style={{ width: '100%' }} />
+              </div>
+
+              {/* Fecha procesamiento VI */}
+              <div className="form-field">
+                <label className="form-label">Fecha procesamiento VI</label>
+                <input type="date" className="input" value={editOpForm.fecha_procesamiento_vi} onChange={e => setEditOpForm(f => ({ ...f, fecha_procesamiento_vi: e.target.value }))} style={{ width: '100%' }} />
+              </div>
+
+              {/* N° OP cliente */}
+              <div className="form-field">
+                <label className="form-label">N° OP cliente</label>
+                <input className="input" value={editOpForm.numero_op} onChange={e => setEditOpForm(f => ({ ...f, numero_op: e.target.value }))} style={{ width: '100%' }} />
+              </div>
+
+              {/* N° Referencia cliente */}
+              <div className="form-field">
+                <label className="form-label">N° Referencia cliente</label>
+                <input className="input" value={editOpForm.numero_referencia_cliente} onChange={e => setEditOpForm(f => ({ ...f, numero_referencia_cliente: e.target.value }))} style={{ width: '100%' }} />
+              </div>
+
+              {/* Moneda */}
+              <div className="form-field">
+                <label className="form-label">Moneda</label>
+                <select className="select" value={editOpForm.moneda} onChange={e => setEditOpForm(f => ({ ...f, moneda: e.target.value }))} style={{ width: '100%' }}>
+                  <option value="USD">USD – Dólares</option>
+                  <option value="PEN">PEN – Soles</option>
+                  <option value="EUR">EUR – Euros</option>
+                </select>
+              </div>
+
+              {/* Monto sin IGV */}
+              <div className="form-field">
+                <label className="form-label">Monto sin IGV</label>
+                <input type="number" className="input" value={editOpForm.monto_total_sin_igv} onChange={e => setEditOpForm(f => ({ ...f, monto_total_sin_igv: e.target.value }))} step="0.01" min="0" style={{ width: '100%' }} />
+              </div>
+
+              {/* Utilidad bruta */}
+              <div className="form-field">
+                <label className="form-label">Utilidad bruta cotización (%)</label>
+                <div style={{ position: 'relative' }}>
+                  <input type="number" className="input" value={editOpForm.u_bruta_coti} onChange={e => setEditOpForm(f => ({ ...f, u_bruta_coti: e.target.value }))} step="0.01" min="0" max="100" style={{ width: '100%', paddingRight: 28 }} />
+                  <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: 'var(--text-3)', pointerEvents: 'none' }}>%</span>
+                </div>
+              </div>
+
+              {/* Forma de pago */}
+              <div className="form-field">
+                <label className="form-label">Forma de pago</label>
+                <select className="select" value={editOpForm.forma_pago} onChange={e => setEditOpForm(f => ({ ...f, forma_pago: e.target.value }))} style={{ width: '100%' }}>
+                  <option value="">— Sin especificar —</option>
+                  {['Contado','Crédito 15 días','Crédito 30 días','Crédito 45 días','Crédito 60 días','Crédito 90 días','Carta de crédito','Transferencia anticipada'].map(fp => <option key={fp} value={fp}>{fp}</option>)}
+                </select>
+              </div>
+
+              {/* Comisión compartida */}
+              <div className="form-field">
+                <label className="form-label">Comisión compartida</label>
+                <input className="input" value={editOpForm.comision_compartida} onChange={e => setEditOpForm(f => ({ ...f, comision_compartida: e.target.value }))} style={{ width: '100%' }} />
+              </div>
+
+              {/* Cliente */}
+              <div className="form-field" style={{ gridColumn: '1 / -1' }} ref={editClienteRef}>
+                <label className="form-label">Cliente *</label>
+                <div style={{ position: 'relative' }}>
+                  <Icon name="search" size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', pointerEvents: 'none' }} />
+                  <input className="input" value={editClienteSearch}
+                    onChange={e => { setEditClienteSearch(e.target.value); setShowEditClienteDrop(true); if (!e.target.value) setEditOpForm(f => ({ ...f, cliente_id: '' })) }}
+                    onFocus={() => setShowEditClienteDrop(true)}
+                    placeholder="Buscar por razón social o RUC…"
+                    style={{ width: '100%', paddingLeft: 30 }} />
+                  {editOpForm.cliente_id && (
+                    <button className="btn ghost xs" style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
+                      onClick={() => { setEditOpForm(f => ({ ...f, cliente_id: '' })); setEditClienteSearch('') }}>
+                      <Icon name="x" size={11} />
+                    </button>
+                  )}
+                  {showEditClienteDrop && (
+                    <div style={dropStyle}>
+                      {filterClientes(editClienteSearch).map(c => (
+                        <div key={c.id} style={dropItem} onMouseDown={() => { setEditOpForm(f => ({ ...f, cliente_id: c.id })); setEditClienteSearch(c.razon_social); setShowEditClienteDrop(false) }} onMouseEnter={hl} onMouseLeave={ul}>
+                          <span style={{ fontWeight: 600 }}>{c.razon_social}</span>
+                          {c.ruc && <span style={{ color: 'var(--text-3)', marginLeft: 8, fontSize: 11, fontFamily: 'var(--font-mono)' }}>{c.ruc}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Cliente final */}
+              <div className="form-field" ref={editClienteFinalRef}>
+                <label className="form-label">Cliente final</label>
+                <div style={{ position: 'relative' }}>
+                  <Icon name="search" size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', pointerEvents: 'none' }} />
+                  <input className="input" value={editClienteFinalSearch}
+                    onChange={e => { setEditClienteFinalSearch(e.target.value); setShowEditClienteFinalDrop(true); if (!e.target.value) setEditOpForm(f => ({ ...f, cliente_final_id: '' })) }}
+                    onFocus={() => setShowEditClienteFinalDrop(true)}
+                    placeholder="Sin especificar…"
+                    style={{ width: '100%', paddingLeft: 30 }} />
+                  {editOpForm.cliente_final_id && (
+                    <button className="btn ghost xs" style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
+                      onClick={() => { setEditOpForm(f => ({ ...f, cliente_final_id: '' })); setEditClienteFinalSearch('') }}>
+                      <Icon name="x" size={11} />
+                    </button>
+                  )}
+                  {showEditClienteFinalDrop && (
+                    <div style={dropStyle}>
+                      {filterClientes(editClienteFinalSearch).map(c => (
+                        <div key={c.id} style={dropItem} onMouseDown={() => { setEditOpForm(f => ({ ...f, cliente_final_id: c.id })); setEditClienteFinalSearch(c.razon_social); setShowEditClienteFinalDrop(false) }} onMouseEnter={hl} onMouseLeave={ul}>
+                          <span style={{ fontWeight: 600 }}>{c.razon_social}</span>
+                          {c.ruc && <span style={{ color: 'var(--text-3)', marginLeft: 8, fontSize: 11, fontFamily: 'var(--font-mono)' }}>{c.ruc}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Cliente proveedor */}
+              <div className="form-field" ref={editClienteProvRef}>
+                <label className="form-label">Cliente proveedor</label>
+                <div style={{ position: 'relative' }}>
+                  <Icon name="search" size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', pointerEvents: 'none', zIndex: 1 }} />
+                  <input className="input" value={editOpForm.cliente_proveedor}
+                    onChange={e => { setEditOpForm(f => ({ ...f, cliente_proveedor: e.target.value })); setShowEditClienteProvDrop(true) }}
+                    onFocus={() => setShowEditClienteProvDrop(true)}
+                    placeholder="Buscar o escribir libremente…"
+                    style={{ width: '100%', paddingLeft: 30 }} />
+                  {showEditClienteProvDrop && (
+                    <div style={dropStyle}>
+                      {filterProveedores(editOpForm.cliente_proveedor).map(p => (
+                        <div key={p.id} style={dropItem} onMouseDown={() => { setEditOpForm(f => ({ ...f, cliente_proveedor: p.razon_social })); setShowEditClienteProvDrop(false) }} onMouseEnter={hl} onMouseLeave={ul}>
+                          <span style={{ fontWeight: 600 }}>{p.razon_social}</span>
+                          {p.pais && <span style={{ color: 'var(--text-3)', marginLeft: 8, fontSize: 11 }}>· {p.pais}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Vendedor 1 */}
+              <div className="form-field" ref={editVend1Ref}>
+                <label className="form-label">Vendedor 1</label>
+                <div style={{ position: 'relative' }}>
+                  <Icon name="search" size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', pointerEvents: 'none' }} />
+                  <input className="input" value={editVend1Search}
+                    onChange={e => { setEditVend1Search(e.target.value); setShowEditVend1Drop(true); if (!e.target.value) setEditOpForm(f => ({ ...f, vendedor1_id: '' })) }}
+                    onFocus={() => setShowEditVend1Drop(true)}
+                    placeholder="Buscar vendedor…"
+                    style={{ width: '100%', paddingLeft: 30 }} />
+                  {editOpForm.vendedor1_id && (
+                    <button className="btn ghost xs" style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
+                      onClick={() => { setEditOpForm(f => ({ ...f, vendedor1_id: '' })); setEditVend1Search('') }}>
+                      <Icon name="x" size={11} />
+                    </button>
+                  )}
+                  {showEditVend1Drop && (
+                    <div style={dropStyle}>
+                      {filterVendedores(editVend1Search).map(v => (
+                        <div key={v.id} style={dropItem} onMouseDown={() => { setEditOpForm(f => ({ ...f, vendedor1_id: v.id })); setEditVend1Search(v.nombre_completo); setShowEditVend1Drop(false) }} onMouseEnter={hl} onMouseLeave={ul}>
+                          {v.nombre_completo}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Vendedor 2 */}
+              <div className="form-field" ref={editVend2Ref}>
+                <label className="form-label">Vendedor 2</label>
+                <div style={{ position: 'relative' }}>
+                  <Icon name="search" size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', pointerEvents: 'none' }} />
+                  <input className="input" value={editVend2Search}
+                    onChange={e => { setEditVend2Search(e.target.value); setShowEditVend2Drop(true); if (!e.target.value) setEditOpForm(f => ({ ...f, vendedor2_id: '' })) }}
+                    onFocus={() => setShowEditVend2Drop(true)}
+                    placeholder="Buscar vendedor…"
+                    style={{ width: '100%', paddingLeft: 30 }} />
+                  {editOpForm.vendedor2_id && (
+                    <button className="btn ghost xs" style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
+                      onClick={() => { setEditOpForm(f => ({ ...f, vendedor2_id: '' })); setEditVend2Search('') }}>
+                      <Icon name="x" size={11} />
+                    </button>
+                  )}
+                  {showEditVend2Drop && (
+                    <div style={dropStyle}>
+                      {filterVendedores(editVend2Search).map(v => (
+                        <div key={v.id} style={dropItem} onMouseDown={() => { setEditOpForm(f => ({ ...f, vendedor2_id: v.id })); setEditVend2Search(v.nombre_completo); setShowEditVend2Drop(false) }} onMouseEnter={hl} onMouseLeave={ul}>
+                          {v.nombre_completo}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Líder */}
+              <div className="form-field" style={{ gridColumn: '1 / -1' }} ref={editLiderRef}>
+                <label className="form-label">Líder</label>
+                <div style={{ position: 'relative' }}>
+                  <Icon name="search" size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', pointerEvents: 'none' }} />
+                  <input className="input" value={editLiderSearch}
+                    onChange={e => { setEditLiderSearch(e.target.value); setShowEditLiderDrop(true); if (!e.target.value) setEditOpForm(f => ({ ...f, lider_id: '' })) }}
+                    onFocus={() => setShowEditLiderDrop(true)}
+                    placeholder="Buscar líder…"
+                    style={{ width: '100%', paddingLeft: 30 }} />
+                  {editOpForm.lider_id && (
+                    <button className="btn ghost xs" style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
+                      onClick={() => { setEditOpForm(f => ({ ...f, lider_id: '' })); setEditLiderSearch('') }}>
+                      <Icon name="x" size={11} />
+                    </button>
+                  )}
+                  {showEditLiderDrop && (
+                    <div style={dropStyle}>
+                      {filterVendedores(editLiderSearch).map(v => (
+                        <div key={v.id} style={dropItem} onMouseDown={() => { setEditOpForm(f => ({ ...f, lider_id: v.id })); setEditLiderSearch(v.nombre_completo); setShowEditLiderDrop(false) }} onMouseEnter={hl} onMouseLeave={ul}>
+                          {v.nombre_completo}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+            </div>
+          )
+        })()}
+      </Modal>
+
+      {/* Modal editar ítem */}
+      <Modal
+        open={!!editItemRow}
+        onClose={() => { setEditItemRow(null); setEditItemError(null) }}
+        title="Editar ítem"
+        subtitle={op?.correlativo_opci}
+        size="lg"
+        footer={
+          <>
+            <button className="btn" onClick={() => setEditItemRow(null)}>Cancelar</button>
+            <button className="btn primary" onClick={handleSaveEditItem} disabled={savingEditItem}>
+              {savingEditItem ? 'Guardando…' : 'Guardar'}
+            </button>
+          </>
+        }
+      >
+        {editItemError && (
+          <div style={{ background: 'var(--bad-soft)', border: '1px solid var(--bad)', borderRadius: 6, padding: '8px 12px', fontSize: 12.5, color: 'var(--bad)', marginBottom: 12 }}>
+            {editItemError}
+          </div>
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+          <div className="form-field" style={{ gridColumn: '1 / -1' }}>
+            <label className="form-label">Descripción *</label>
+            <input className="input" value={editItemForm.descripcion} onChange={e => setEditItemForm(f => ({ ...f, descripcion: e.target.value }))} style={{ width: '100%' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Ítem OP</label>
+            <input className="input" value={editItemForm.item_op} onChange={e => setEditItemForm(f => ({ ...f, item_op: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Cantidad *</label>
+            <input type="number" className="input" value={editItemForm.cantidad} onChange={e => setEditItemForm(f => ({ ...f, cantidad: e.target.value }))} style={{ width: '100%' }} step="1" min="0" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Unidad de medida</label>
+            <input className="input" value={editItemForm.unidad_medida} onChange={e => setEditItemForm(f => ({ ...f, unidad_medida: e.target.value.toUpperCase() }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} placeholder="UND, KG, M2…" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Moneda</label>
+            <select className="select" value={editItemForm.moneda} onChange={e => setEditItemForm(f => ({ ...f, moneda: e.target.value }))} style={{ width: '100%' }}>
+              {['USD', 'PEN', 'EUR'].map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div className="form-field">
+            <label className="form-label">Precio unitario</label>
+            <input type="number" className="input" value={editItemForm.precio_unitario} onChange={e => setEditItemForm(f => ({ ...f, precio_unitario: e.target.value }))} style={{ width: '100%' }} step="0.01" min="0" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Total</label>
+            <div style={{ display: 'flex', alignItems: 'center', height: 34, background: 'var(--panel-2)', border: '1px solid var(--border)', borderRadius: 6, padding: '0 12px', fontSize: 12.5 }}>
+              {editItemForm.cantidad && editItemForm.precio_unitario ? (
+                <span className="mono" style={{ fontWeight: 600, color: 'var(--accent-2)' }}>
+                  {(parseFloat(editItemForm.cantidad || '0') * parseFloat(editItemForm.precio_unitario || '0')).toLocaleString('es-PE', { minimumFractionDigits: 2 })} {editItemForm.moneda}
+                </span>
+              ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
+            </div>
+          </div>
+          <div className="form-field">
+            <label className="form-label">Estado</label>
+            <select className="select" value={editItemForm.estado} onChange={e => setEditItemForm(f => ({ ...f, estado: e.target.value as EstadoItem }))} style={{ width: '100%' }}>
+              {(['Pendiente','En compra','En importación','Recibido','Facturado','Despachado','Entregado'] as EstadoItem[]).map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="form-field">
+            <label className="form-label">Tipo de negocio</label>
+            <select className="select" value={editItemForm.tipo_negocio} onChange={e => setEditItemForm(f => ({ ...f, tipo_negocio: e.target.value as TipoNegocio | '' }))} style={{ width: '100%' }}>
+              <option value="">— Sin especificar —</option>
+              <option value="Venta">Venta</option>
+              <option value="Servicio">Servicio</option>
+            </select>
+          </div>
+          <div className="form-field">
+            <label className="form-label">Sub tipo de negocio</label>
+            <select className="select" value={editItemForm.sub_tipo_negocio} onChange={e => setEditItemForm(f => ({ ...f, sub_tipo_negocio: e.target.value as SubTipoNegocio | '' }))} style={{ width: '100%' }}>
+              <option value="">— Sin especificar —</option>
+              <option value="Importación">Importación</option>
+              <option value="Local">Local</option>
+              <option value="Servicio">Servicio</option>
+            </select>
+          </div>
+          <div className="form-field">
+            <label className="form-label">Fecha req. cliente</label>
+            <input type="date" className="input" value={editItemForm.fecha_req_cliente} onChange={e => setEditItemForm(f => ({ ...f, fecha_req_cliente: e.target.value }))} style={{ width: '100%' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Código cliente</label>
+            <input className="input" value={editItemForm.codigo_cliente} onChange={e => setEditItemForm(f => ({ ...f, codigo_cliente: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">N° Deal</label>
+            <input className="input" value={editItemForm.num_deal} onChange={e => setEditItemForm(f => ({ ...f, num_deal: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Centro de costo</label>
+            <input className="input" value={editItemForm.centro_costo} onChange={e => setEditItemForm(f => ({ ...f, centro_costo: e.target.value }))} style={{ width: '100%' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Requiere armado</label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', height: 34, padding: '0 10px', background: 'var(--panel-2)', border: '1px solid var(--border)', borderRadius: 6 }}>
+              <input type="checkbox" checked={editItemForm.requiere_armado} onChange={e => setEditItemForm(f => ({ ...f, requiere_armado: e.target.checked }))} />
+              <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>Sí, requiere armado</span>
+            </label>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal eliminar ítem */}
+      <Modal
+        open={!!deleteItemRow}
+        onClose={() => { setDeleteItemRow(null); setDeleteItemError(null) }}
+        title="Eliminar ítem"
+        size="sm"
+        footer={
+          <>
+            <button className="btn" onClick={() => { setDeleteItemRow(null); setDeleteItemError(null) }}>Cancelar</button>
+            <button className="btn" style={{ background: 'var(--bad)', color: '#fff' }} onClick={handleDeleteItem} disabled={deletingItem}>
+              {deletingItem ? 'Eliminando…' : 'Eliminar'}
+            </button>
+          </>
+        }
+      >
+        <p style={{ fontSize: 13.5 }}>
+          ¿Eliminar el ítem <strong>{deleteItemRow?.codigo_comercial || deleteItemRow?.descripcion}</strong>? Esta acción no se puede deshacer.
+        </p>
+        {deleteItemError && (
+          <p style={{ fontSize: 13, color: 'var(--bad)', marginTop: 8, marginBottom: 0 }}>{deleteItemError}</p>
+        )}
       </Modal>
 
       {/* Modal cambiar estado */}

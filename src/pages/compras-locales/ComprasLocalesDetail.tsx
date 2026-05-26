@@ -83,7 +83,7 @@ export function ComprasLocalesDetail() {
 
   // Editar / eliminar ítem
   const [editingItem, setEditingItem] = useState<OrdenCompraLocalItem | null>(null)
-  const [editItemForm, setEditItemForm] = useState({ item_oc: '', codigo_comercial: '', descripcion: '', cantidad: '', unidad_medida: '', moneda: 'USD', pcu1: '' })
+  const [editItemForm, setEditItemForm] = useState({ item_oc: '', codigo_comercial: '', descripcion: '', cantidad: '', unidad_medida: '', moneda: 'USD', pcu1: '', pcu2: '', tc_usd: '' })
   const [editItemSaving, setEditItemSaving] = useState(false)
   const [editItemError, setEditItemError] = useState<string | null>(null)
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null)
@@ -231,6 +231,8 @@ export function ComprasLocalesDetail() {
       unidad_medida: item.unidad_medida ?? '',
       moneda: item.moneda ?? 'USD',
       pcu1: String(item.pcu1 ?? ''),
+      pcu2: item.pcu2 != null ? String(item.pcu2) : '',
+      tc_usd: item.tc_usd != null ? String(item.tc_usd) : '',
     })
     setEditItemError(null)
   }
@@ -252,6 +254,8 @@ export function ComprasLocalesDetail() {
       unidad_medida: editItemForm.unidad_medida || null,
       moneda: editItemForm.moneda || 'USD',
       pcu1,
+      pcu2: editItemForm.pcu2 ? parseFloat(editItemForm.pcu2) : null,
+      tc_usd: editItemForm.tc_usd ? parseFloat(editItemForm.tc_usd) : null,
       monto_total: cantidad * pcu1,
     }).eq('id', editingItem.id)
     setEditItemSaving(false)
@@ -646,6 +650,14 @@ export function ComprasLocalesDetail() {
           <div className="form-field">
             <label className="form-label">Precio unitario *</label>
             <input type="number" className="input" value={editItemForm.pcu1} onChange={e => setEditItemForm(f => ({ ...f, pcu1: e.target.value }))} style={{ width: '100%' }} step="0.01" min="0" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Precio unitario 2</label>
+            <input type="number" className="input" value={editItemForm.pcu2} onChange={e => setEditItemForm(f => ({ ...f, pcu2: e.target.value }))} style={{ width: '100%' }} step="0.01" min="0" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Tasa de cambio USD</label>
+            <input type="number" className="input" value={editItemForm.tc_usd} onChange={e => setEditItemForm(f => ({ ...f, tc_usd: e.target.value }))} style={{ width: '100%' }} step="0.001" min="0" placeholder="Ej: 3.85" />
           </div>
           {editItemForm.cantidad && editItemForm.pcu1 && (
             <div style={{ gridColumn: '1 / -1', background: 'var(--panel-2)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 12px', fontSize: 12.5 }}>

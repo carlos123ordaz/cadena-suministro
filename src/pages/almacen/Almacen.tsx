@@ -93,6 +93,9 @@ export function Almacen() {
     estado: '' as Recepcion['estado'] | '',
     conf_almacen: '' as ConformidadRecepcion | '',
     motivo_conf_almacen: '',
+    conf_servicio: '' as ConformidadRecepcion | '',
+    motivo_conf_servicio: '',
+    fecha_mercaderia_revisada: '',
     cantidad_recibida: '',
     fecha_recepcion: '',
     erp_inta_entrada: '',
@@ -107,6 +110,9 @@ export function Almacen() {
       estado: r.estado,
       conf_almacen: r.conf_almacen ?? '',
       motivo_conf_almacen: r.motivo_conf_almacen ?? '',
+      conf_servicio: r.conf_servicio ?? '',
+      motivo_conf_servicio: r.motivo_conf_servicio ?? '',
+      fecha_mercaderia_revisada: r.fecha_mercaderia_revisada ?? '',
       cantidad_recibida: r.cantidad_recibida?.toString() ?? '',
       fecha_recepcion: r.fecha_recepcion ?? '',
       erp_inta_entrada: r.erp_inta_entrada ?? '',
@@ -122,6 +128,9 @@ export function Almacen() {
       estado: editRecForm.estado || undefined,
       conf_almacen: editRecForm.conf_almacen || null,
       motivo_conf_almacen: editRecForm.motivo_conf_almacen || null,
+      conf_servicio: editRecForm.conf_servicio || null,
+      motivo_conf_servicio: editRecForm.motivo_conf_servicio || null,
+      fecha_mercaderia_revisada: editRecForm.fecha_mercaderia_revisada || null,
       cantidad_recibida: parseFloat(editRecForm.cantidad_recibida) || editRec.cantidad_recibida,
       fecha_recepcion: editRecForm.fecha_recepcion || null,
       erp_inta_entrada: editRecForm.erp_inta_entrada || null,
@@ -705,7 +714,7 @@ export function Almacen() {
             <button
               className="btn primary"
               onClick={handleRegistrarRecepcion}
-              disabled={savingRec || !recHeader.almacen_id || recItems.length === 0}
+              disabled={savingRec}
             >
               {savingRec ? <><Icon name="spinner" size={12} style={{ animation: 'spin 1s linear infinite' }} /> Registrando…</> : 'Registrar recepción'}
             </button>
@@ -956,7 +965,7 @@ export function Almacen() {
         footer={
           <>
             <button className="btn" onClick={() => { setShowDesp(false); resetDesp(); setDespError(null) }}>Cancelar</button>
-            <button className="btn primary" onClick={handleRegistrarDespacho} disabled={savingDesp || !despForm.almacen_id || !despForm.operacion_id || !despForm.codigo_comercial || !despForm.cantidad}>
+            <button className="btn primary" onClick={handleRegistrarDespacho} disabled={savingDesp}>
               {savingDesp ? 'Guardando…' : 'Registrar despacho'}
             </button>
           </>
@@ -1117,10 +1126,29 @@ export function Almacen() {
           </div>
           {editRecForm.conf_almacen && editRecForm.conf_almacen !== 'Conforme' && (
             <div className="form-field">
-              <label className="form-label">Motivo</label>
+              <label className="form-label">Motivo conformidad almacén</label>
               <textarea className="input" rows={2} value={editRecForm.motivo_conf_almacen} onChange={e => setEditRecForm(f => ({ ...f, motivo_conf_almacen: e.target.value }))} style={{ width: '100%', resize: 'vertical' }} />
             </div>
           )}
+          <div className="form-field">
+            <label className="form-label">Conformidad servicio</label>
+            <select className="select" value={editRecForm.conf_servicio} onChange={e => setEditRecForm(f => ({ ...f, conf_servicio: e.target.value as ConformidadRecepcion }))} style={{ width: '100%' }}>
+              <option value="">— Sin especificar —</option>
+              <option value="Conforme">Conforme</option>
+              <option value="Observado">Observado</option>
+              <option value="Rechazado">Rechazado</option>
+            </select>
+          </div>
+          {editRecForm.conf_servicio && editRecForm.conf_servicio !== 'Conforme' && (
+            <div className="form-field">
+              <label className="form-label">Motivo conformidad servicio</label>
+              <textarea className="input" rows={2} value={editRecForm.motivo_conf_servicio} onChange={e => setEditRecForm(f => ({ ...f, motivo_conf_servicio: e.target.value }))} style={{ width: '100%', resize: 'vertical' }} />
+            </div>
+          )}
+          <div className="form-field">
+            <label className="form-label">Fecha mercadería revisada</label>
+            <input type="date" className="input" value={editRecForm.fecha_mercaderia_revisada} onChange={e => setEditRecForm(f => ({ ...f, fecha_mercaderia_revisada: e.target.value }))} style={{ width: '100%' }} />
+          </div>
           <div className="form-field">
             <label className="form-label">Cantidad recibida</label>
             <input type="number" className="input" value={editRecForm.cantidad_recibida} onChange={e => setEditRecForm(f => ({ ...f, cantidad_recibida: e.target.value }))} style={{ width: '100%' }} step="any" min="0" />

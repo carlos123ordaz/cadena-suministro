@@ -39,13 +39,13 @@ const defaultImpForm = {
 
 const defaultOciForm = {
   num_oc: '', fecha_oc: new Date().toISOString().slice(0, 10), moneda: 'USD',
-  monto_total: '', notas: '', num_cotizacion_proveedor: '', fecha_ofrecida: '',
+  monto_total: '', notas: '', num_cotizacion_proveedor: '', fecha_ofrecida: '', eta: '',
 }
 
 const defaultEditOciForm = {
   num_oc: '', fecha_oc: '', moneda: 'USD', monto_total: '',
   status: '' as EstadoOCI | '', notas: '',
-  num_cotizacion_proveedor: '', fecha_ofrecida: '',
+  num_cotizacion_proveedor: '', fecha_ofrecida: '', eta: '',
   num_confirmacion_proveedor: '', fecha_invoice: '', num_invoice: '',
 }
 
@@ -317,6 +317,7 @@ export function ImportacionesList() {
       notas: ociNuevoForm.notas || null,
       num_cotizacion_proveedor: ociNuevoForm.num_cotizacion_proveedor || null,
       fecha_ofrecida: ociNuevoForm.fecha_ofrecida || null,
+      eta: ociNuevoForm.eta || null,
       status: 'Borrador',
     })
     setSavingNuevaOci(false)
@@ -343,6 +344,7 @@ export function ImportacionesList() {
       notas: (oci as unknown as { notas?: string }).notas ?? '',
       num_cotizacion_proveedor: oci.num_cotizacion_proveedor ?? '',
       fecha_ofrecida: oci.fecha_ofrecida ?? '',
+      eta: oci.eta ?? '',
       num_confirmacion_proveedor: oci.num_confirmacion_proveedor ?? '',
       fecha_invoice: oci.fecha_invoice ?? '',
       num_invoice: oci.num_invoice ?? '',
@@ -367,6 +369,7 @@ export function ImportacionesList() {
       notas: editOciForm.notas || null,
       num_cotizacion_proveedor: editOciForm.num_cotizacion_proveedor || null,
       fecha_ofrecida: editOciForm.fecha_ofrecida || null,
+      eta: editOciForm.eta || null,
       num_confirmacion_proveedor: editOciForm.num_confirmacion_proveedor || null,
       fecha_invoice: editOciForm.fecha_invoice || null,
       num_invoice: editOciForm.num_invoice || null,
@@ -527,6 +530,10 @@ export function ImportacionesList() {
         <div className="form-field">
           <label className="form-label">Fecha ofrecida</label>
           <input type="date" className="input" value={form.fecha_ofrecida} onChange={e => setForm(f => ({ ...f, fecha_ofrecida: e.target.value }))} style={{ width: '100%' }} />
+        </div>
+        <div className="form-field">
+          <label className="form-label">ETA</label>
+          <input type="date" className="input" value={form.eta} onChange={e => setForm(f => ({ ...f, eta: e.target.value }))} style={{ width: '100%' }} />
         </div>
         <div className="form-field">
           <label className="form-label">Moneda</label>

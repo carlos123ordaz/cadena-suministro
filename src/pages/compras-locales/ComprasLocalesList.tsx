@@ -62,7 +62,8 @@ export function ComprasLocalesList() {
   const [editFormProv, setEditFormProv] = useState<ProveedorOption | null>(null)
   const [editForm, setEditForm] = useState({
     num_oc: '', fecha_oc: '', moneda: 'USD', monto_total: '', status: '' as EstadoOCL | '',
-    num_cotizacion_proveedor: '', fecha_ofrecida: '', forma_pago: '', notas: '',
+    num_cotizacion_proveedor: '', fecha_ofrecida: '', forma_pago: '', categoria_forma_pago: '',
+    fecha_inicio: '', num_confirmacion_proveedor: '', fecha_factura_prov: '', notas: '',
   })
   const [savingEdit, setSavingEdit] = useState(false)
 
@@ -77,6 +78,10 @@ export function ComprasLocalesList() {
       num_cotizacion_proveedor: row.num_cotizacion_proveedor ?? '',
       fecha_ofrecida: row.fecha_ofrecida ?? '',
       forma_pago: row.forma_pago ?? '',
+      categoria_forma_pago: row.categoria_forma_pago ?? '',
+      fecha_inicio: row.fecha_inicio ?? '',
+      num_confirmacion_proveedor: row.num_confirmacion_proveedor ?? '',
+      fecha_factura_prov: row.fecha_factura_prov ?? '',
       notas: row.notas ?? '',
     })
     setEditRow(row)
@@ -95,6 +100,10 @@ export function ComprasLocalesList() {
       num_cotizacion_proveedor: editForm.num_cotizacion_proveedor || null,
       fecha_ofrecida: editForm.fecha_ofrecida || null,
       forma_pago: editForm.forma_pago || null,
+      categoria_forma_pago: editForm.categoria_forma_pago || null,
+      fecha_inicio: editForm.fecha_inicio || null,
+      num_confirmacion_proveedor: editForm.num_confirmacion_proveedor || null,
+      fecha_factura_prov: editForm.fecha_factura_prov || null,
       notas: editForm.notas || null,
     }).eq('id', editRow.id)
     setSavingEdit(false)
@@ -121,10 +130,14 @@ export function ComprasLocalesList() {
   const [createForm, setCreateForm] = useState({
     num_oc: '',
     fecha_oc: new Date().toISOString().slice(0, 10),
+    fecha_inicio: '',
     moneda: 'USD',
     monto_total: '',
     forma_pago: '',
+    categoria_forma_pago: '',
     num_cotizacion_proveedor: '',
+    num_confirmacion_proveedor: '',
+    fecha_factura_prov: '',
     notas: '',
   })
   const [createSaving, setCreateSaving] = useState(false)
@@ -147,7 +160,11 @@ export function ComprasLocalesList() {
         moneda: createForm.moneda as 'USD' | 'PEN' | 'EUR',
         monto_total: parseFloat(createForm.monto_total) || 0,
         forma_pago: createForm.forma_pago || undefined,
+        categoria_forma_pago: createForm.categoria_forma_pago || undefined,
+        fecha_inicio: createForm.fecha_inicio || undefined,
         num_cotizacion_proveedor: createForm.num_cotizacion_proveedor || undefined,
+        num_confirmacion_proveedor: createForm.num_confirmacion_proveedor || undefined,
+        fecha_factura_prov: createForm.fecha_factura_prov || undefined,
         notas: createForm.notas || undefined,
         status: 'Pendiente de cotización',
       },
@@ -163,10 +180,14 @@ export function ComprasLocalesList() {
     setCreateForm({
       num_oc: '',
       fecha_oc: new Date().toISOString().slice(0, 10),
+      fecha_inicio: '',
       moneda: 'USD',
       monto_total: '',
       forma_pago: '',
+      categoria_forma_pago: '',
       num_cotizacion_proveedor: '',
+      num_confirmacion_proveedor: '',
+      fecha_factura_prov: '',
       notas: '',
     })
     if (data?.id) {
@@ -485,6 +506,25 @@ export function ComprasLocalesList() {
             <label className="form-label">Fecha ofrecida</label>
             <input type="date" className="input" value={editForm.fecha_ofrecida} onChange={e => setEditForm(f => ({ ...f, fecha_ofrecida: e.target.value }))} style={{ width: '100%' }} />
           </div>
+          <div className="form-field">
+            <label className="form-label">Fecha inicio</label>
+            <input type="date" className="input" value={editForm.fecha_inicio} onChange={e => setEditForm(f => ({ ...f, fecha_inicio: e.target.value }))} style={{ width: '100%' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">N° Confirmación proveedor</label>
+            <input className="input" value={editForm.num_confirmacion_proveedor} onChange={e => setEditForm(f => ({ ...f, num_confirmacion_proveedor: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} placeholder="CONF-001" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Fecha factura proveedor</label>
+            <input type="date" className="input" value={editForm.fecha_factura_prov} onChange={e => setEditForm(f => ({ ...f, fecha_factura_prov: e.target.value }))} style={{ width: '100%' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Categoría forma de pago</label>
+            <select className="select" value={editForm.categoria_forma_pago} onChange={e => setEditForm(f => ({ ...f, categoria_forma_pago: e.target.value }))} style={{ width: '100%' }}>
+              <option value="">— Sin especificar —</option>
+              {['Contado','Crédito','Carta de crédito','Transferencia anticipada'].map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
           <div className="form-field" style={{ gridColumn: '1 / -1' }}>
             <label className="form-label">Notas</label>
             <textarea className="input" rows={2} value={editForm.notas} onChange={e => setEditForm(f => ({ ...f, notas: e.target.value }))} style={{ width: '100%', resize: 'vertical' }} />
@@ -571,6 +611,25 @@ export function ComprasLocalesList() {
           <div className="form-field">
             <label className="form-label">N° Cotización proveedor</label>
             <input className="input" value={createForm.num_cotizacion_proveedor} onChange={e => setCreateForm(f => ({ ...f, num_cotizacion_proveedor: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} placeholder="COT-001" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Fecha inicio</label>
+            <input type="date" className="input" value={createForm.fecha_inicio} onChange={e => setCreateForm(f => ({ ...f, fecha_inicio: e.target.value }))} style={{ width: '100%' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">N° Confirmación proveedor</label>
+            <input className="input" value={createForm.num_confirmacion_proveedor} onChange={e => setCreateForm(f => ({ ...f, num_confirmacion_proveedor: e.target.value }))} style={{ width: '100%', fontFamily: 'var(--font-mono)' }} placeholder="CONF-001" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Fecha factura proveedor</label>
+            <input type="date" className="input" value={createForm.fecha_factura_prov} onChange={e => setCreateForm(f => ({ ...f, fecha_factura_prov: e.target.value }))} style={{ width: '100%' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Categoría forma de pago</label>
+            <select className="select" value={createForm.categoria_forma_pago} onChange={e => setCreateForm(f => ({ ...f, categoria_forma_pago: e.target.value }))} style={{ width: '100%' }}>
+              <option value="">— Sin especificar —</option>
+              {['Contado','Crédito','Carta de crédito','Transferencia anticipada'].map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
           <div className="form-field" style={{ gridColumn: '1 / -1' }}>
             <label className="form-label">Notas</label>

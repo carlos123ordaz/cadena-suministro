@@ -54,6 +54,8 @@ export function Facturacion() {
   const [editForm, setEditForm] = useState({
     num_factura: '', fecha_emision: '', fecha_prometida_pago: '', moneda: 'USD',
     monto_total_sin_igv: '', factor_igv: '1.18', forma_pago: '', dias_cobranza: '',
+    tc_usd_sol: '', categoria_forma_pago: '', categoria_operacion: '',
+    entidad_financiera: '', producto_crm: '',
     status: '' as EstadoFactura | '',
   })
   const [savingEditFact, setSavingEditFact] = useState(false)
@@ -84,6 +86,11 @@ export function Facturacion() {
       factor_igv: r.factor_igv?.toString() ?? '1.18',
       forma_pago: r.forma_pago ?? '',
       dias_cobranza: r.dias_cobranza?.toString() ?? '',
+      tc_usd_sol: r.tc_usd_sol?.toString() ?? '',
+      categoria_forma_pago: r.categoria_forma_pago ?? '',
+      categoria_operacion: r.categoria_operacion ?? '',
+      entidad_financiera: r.entidad_financiera ?? '',
+      producto_crm: r.producto_crm ?? '',
       status: r.status,
     })
     setEditRow(r)
@@ -101,6 +108,11 @@ export function Facturacion() {
       factor_igv: parseFloat(editForm.factor_igv) || 1.18,
       forma_pago: editForm.forma_pago || null,
       dias_cobranza: editForm.dias_cobranza ? parseInt(editForm.dias_cobranza) : null,
+      tc_usd_sol: editForm.tc_usd_sol ? parseFloat(editForm.tc_usd_sol) : null,
+      categoria_forma_pago: editForm.categoria_forma_pago || null,
+      categoria_operacion: editForm.categoria_operacion || null,
+      entidad_financiera: editForm.entidad_financiera || null,
+      producto_crm: editForm.producto_crm || null,
       status: editForm.status || undefined,
     }).eq('id', editRow.id)
     setSavingEditFact(false)
@@ -620,6 +632,30 @@ export function Facturacion() {
           <div className="form-field" style={{ gridColumn: '1 / -1' }}>
             <label className="form-label">Forma de pago</label>
             <input className="input" value={editForm.forma_pago} onChange={e => setEditForm(f => ({ ...f, forma_pago: e.target.value }))} style={{ width: '100%' }} placeholder="30 días neto, Contado…" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">T/C USD/Sol</label>
+            <input type="number" className="input" value={editForm.tc_usd_sol} onChange={e => setEditForm(f => ({ ...f, tc_usd_sol: e.target.value }))} style={{ width: '100%' }} step="0.001" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Categoría forma de pago</label>
+            <select className="select" value={editForm.categoria_forma_pago} onChange={e => setEditForm(f => ({ ...f, categoria_forma_pago: e.target.value }))} style={{ width: '100%' }}>
+              <option value="">—</option><option value="Contado">Contado</option><option value="Crédito">Crédito</option><option value="Carta de crédito">Carta de crédito</option>
+            </select>
+          </div>
+          <div className="form-field">
+            <label className="form-label">Categoría operación</label>
+            <select className="select" value={editForm.categoria_operacion} onChange={e => setEditForm(f => ({ ...f, categoria_operacion: e.target.value }))} style={{ width: '100%' }}>
+              <option value="">—</option><option value="Importación">Importación</option><option value="Compra local">Compra local</option><option value="Servicio">Servicio</option>
+            </select>
+          </div>
+          <div className="form-field">
+            <label className="form-label">Entidad financiera</label>
+            <input className="input" value={editForm.entidad_financiera} onChange={e => setEditForm(f => ({ ...f, entidad_financiera: e.target.value }))} style={{ width: '100%' }} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Producto CRM</label>
+            <input className="input" value={editForm.producto_crm} onChange={e => setEditForm(f => ({ ...f, producto_crm: e.target.value }))} style={{ width: '100%' }} />
           </div>
         </div>
       </Modal>

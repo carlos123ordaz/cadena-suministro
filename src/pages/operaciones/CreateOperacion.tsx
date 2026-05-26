@@ -31,6 +31,7 @@ interface Form {
   numero_referencia_cliente: string
   moneda: Currency
   monto_total_sin_igv: string
+  u_bruta_coti: string
   forma_pago: string
   estado: EstadoOPCI
   vendedor1_id: string
@@ -50,6 +51,7 @@ const defaultForm: Form = {
   numero_referencia_cliente: '',
   moneda: 'USD',
   monto_total_sin_igv: '',
+  u_bruta_coti: '',
   forma_pago: '',
   estado: 'Borrador',
   vendedor1_id: '',
@@ -208,6 +210,7 @@ export function CreateOperacion({ open, onClose, onCreated }: Props) {
       numero_referencia_cliente: form.numero_referencia_cliente || undefined,
       moneda: form.moneda,
       monto_total_sin_igv: parseFloat(form.monto_total_sin_igv) || 0,
+      u_bruta_coti: form.u_bruta_coti ? parseFloat(form.u_bruta_coti) / 100 : undefined,
       forma_pago: form.forma_pago || undefined,
       estado: form.estado,
       vendedor1_id: form.vendedor1_id || undefined,
@@ -434,6 +437,25 @@ export function CreateOperacion({ open, onClose, onCreated }: Props) {
         <div className="form-field">
           <label className="form-label">Monto sin IGV</label>
           <input type="number" className="input" value={form.monto_total_sin_igv} onChange={e => set('monto_total_sin_igv', e.target.value)} placeholder="0.00" step="0.01" min="0" style={{ width: '100%' }} />
+        </div>
+
+        {/* Utilidad bruta cotización */}
+        <div className="form-field">
+          <label className="form-label">Utilidad bruta cotización (%)</label>
+          <div style={{ position: 'relative' }}>
+            <input
+              type="number"
+              className="input"
+              value={form.u_bruta_coti}
+              onChange={e => set('u_bruta_coti', e.target.value)}
+              placeholder="Ej: 25.5"
+              step="0.01"
+              min="0"
+              max="100"
+              style={{ width: '100%', paddingRight: 28 }}
+            />
+            <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: 'var(--text-3)', pointerEvents: 'none' }}>%</span>
+          </div>
         </div>
 
         {/* Forma de pago */}
