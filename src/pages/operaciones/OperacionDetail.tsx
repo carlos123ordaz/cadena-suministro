@@ -70,6 +70,7 @@ export function OperacionDetail() {
   const [historial, setHistorial] = useState<HistorialEvento[]>([])
   const [comentarios, setComentarios] = useState<Comentario[]>([])
   const [documentos, setDocumentos] = useState<DocumentoAdjunto[]>([])
+  const [docsRelacionados, setDocsRelacionados] = useState<(DocumentoAdjunto & { _fuente: string })[]>([])
   const [compraItems, setCompraItems] = useState<Record<string, unknown>[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('resumen')
@@ -196,6 +197,39 @@ export function OperacionDetail() {
     setComentarios(comRes.data ?? [])
     setDocumentos(docRes.data ?? [])
     setCompraItems((ciRes.data ?? []) as Record<string, unknown>[])
+
+    type RawOci = { id: string; num_oc: string; importacion?: { id: string; grupo_importacion: string } | Array<{ id: string; grupo_importacion: string }> | null }
+    const getRawOci = (item: unknown): RawOci | null => {
+      const oc = (item as Record<string, unknown>).orden_compra
+      if (!oc) return null
+      return (Array.isArray(oc) ? oc[0] : oc) as RawOci
+    }
+    const getRawImp = (oci: RawOci): { id: string; grupo_importacion: string } | null => {
+      if (!oci.importacion) return null
+      return Array.isArray(oci.importacion) ? oci.importacion[0] : oci.importacion
+    }
+    const ciRows = (ciRes.data ?? []) as unknown[]
+    const ociIds = [...new Set(ciRows.map(i => getRawOci(i)?.id).filter((x): x is string => !!x))]
+    const impIds = [...new Set(ciRows.map(i => { const oc = getRawOci(i); return oc ? getRawImp(oc)?.id : undefined }).filter((x): x is string => !!x))]
+    const ociMap: Record<string, string> = {}
+    const impMap: Record<string, string> = {}
+    for (const row of ciRows) {
+      const oc = getRawOci(row)
+      if (oc) { ociMap[oc.id] = oc.num_oc; const imp = getRawImp(oc); if (imp) impMap[imp.id] = imp.grupo_importacion }
+    }
+    const [docsOciRes, docsImpRes] = await Promise.all([
+      ociIds.length > 0
+        ? supabase.from('documentos_adjuntos').select('*, usuario:profiles(*)').eq('entidad_tipo', 'orden_compra_importacion').in('entidad_id', ociIds).order('created_at', { ascending: false })
+        : Promise.resolve({ data: [] }),
+      impIds.length > 0
+        ? supabase.from('documentos_adjuntos').select('*, usuario:profiles(*)').eq('entidad_tipo', 'importacion').in('entidad_id', impIds).order('created_at', { ascending: false })
+        : Promise.resolve({ data: [] }),
+    ])
+    setDocsRelacionados([
+      ...((docsOciRes.data ?? []) as DocumentoAdjunto[]).map(d => ({ ...d, _fuente: `OCI ${ociMap[d.entidad_id] ?? ''}`.trim() })),
+      ...((docsImpRes.data ?? []) as DocumentoAdjunto[]).map(d => ({ ...d, _fuente: `Importación ${impMap[d.entidad_id] ?? ''}`.trim() })),
+    ])
+
     setLoading(false)
   }, [operacionId])
 
@@ -515,6 +549,28 @@ export function OperacionDetail() {
     setSavingComent(false)
   }
 
+  function DocCard({ doc, fuente }: { doc: DocumentoAdjunto; fuente?: string }) {
+    return (
+      <div style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '10px 12px', background: 'var(--panel-2)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <Icon name="doc" size={16} style={{ color: 'var(--info)', flexShrink: 0 }} />
+          <Badge tone="muted" className="xs">{doc.tipo_documento}</Badge>
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {doc.nombre_archivo}
+        </div>
+        {fuente && (
+          <div className="tiny" style={{ marginTop: 3, color: 'var(--accent-2)', fontWeight: 500 }}>{fuente}</div>
+        )}
+        <div className="tiny" style={{ marginTop: 3 }}>{fmtDate(doc.created_at)}</div>
+        <a href={doc.url_storage} target="_blank" rel="noopener noreferrer"
+          className="btn ghost xs" style={{ marginTop: 8, width: '100%', justifyContent: 'center' }}>
+          <Icon name="download" size={11} /> Descargar
+        </a>
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div className="page">
@@ -548,7 +604,7 @@ export function OperacionDetail() {
       ocl:       compraItems.filter(i => (i.orden_compra as Record<string, unknown> | undefined)?.tipo === 'Local').length,
       oci:       compraItems.filter(i => (i.orden_compra as Record<string, unknown> | undefined)?.tipo === 'Importacion').length,
       historial: historial.length,
-      docs:      documentos.length,
+      docs:      documentos.length + docsRelacionados.length,
       notas:     comentarios.length,
     }
     return countMap[t.id] != null ? { ...t, count: countMap[t.id] } : t
@@ -810,30 +866,40 @@ export function OperacionDetail() {
       {tab === 'docs' && (
         <Card title="Documentos adjuntos" icon="paperclip"
           actions={<button className="btn primary xs" onClick={() => setShowUpload(true)}><Icon name="upload" size={11} /> Subir documento</button>}>
-          {documentos.length === 0 ? (
+          {documentos.length === 0 && docsRelacionados.length === 0 ? (
             <div className="empty-state">
               <Icon name="paperclip" size={28} className="empty-icon" />
               <div className="empty-title">Sin documentos adjuntos</div>
               <div className="empty-sub">Adjunta facturas, OC, packing list, BL u otros documentos relevantes.</div>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
-              {documentos.map(doc => (
-                <div key={doc.id} style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '10px 12px', background: 'var(--panel-2)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                    <Icon name="doc" size={16} style={{ color: 'var(--info)', flexShrink: 0 }} />
-                    <Badge tone="muted" className="xs">{doc.tipo_documento}</Badge>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {documentos.length > 0 && (
+                <div>
+                  {docsRelacionados.length > 0 && (
+                    <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-3)', marginBottom: 10 }}>
+                      Propios de la operación
+                    </div>
+                  )}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+                    {documentos.map(doc => (
+                      <DocCard key={doc.id} doc={doc} />
+                    ))}
                   </div>
-                  <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {doc.nombre_archivo}
-                  </div>
-                  <div className="tiny" style={{ marginTop: 4 }}>{fmtDate(doc.created_at)}</div>
-                  <a href={doc.url_storage} target="_blank" rel="noopener noreferrer"
-                    className="btn ghost xs" style={{ marginTop: 8, width: '100%', justifyContent: 'center' }}>
-                    <Icon name="download" size={11} /> Descargar
-                  </a>
                 </div>
-              ))}
+              )}
+              {docsRelacionados.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-3)', marginBottom: 10 }}>
+                    De importaciones vinculadas
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+                    {docsRelacionados.map(doc => (
+                      <DocCard key={doc.id} doc={doc} fuente={doc._fuente} />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </Card>

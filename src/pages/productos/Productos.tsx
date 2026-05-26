@@ -185,9 +185,10 @@ export function Productos() {
     {
       key: 'codigo_comercial',
       label: 'Código',
-      render: r => <span className="mono" style={{ color: 'var(--accent-2)', fontWeight: 600 }}>{r.codigo_comercial}</span>,
+      width: 200,
+      render: r => <span className="mono" style={{ display: 'block', width: 190, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--accent-2)', fontWeight: 600 }} title={r.codigo_comercial}>{r.codigo_comercial}</span>,
     },
-    { key: 'descripcion', label: 'Descripción', render: r => <span>{r.descripcion}</span> },
+    { key: 'descripcion', label: 'Descripción', width: 280, render: r => <span style={{ display: 'block', width: 270, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.descripcion}>{r.descripcion}</span> },
     {
       key: 'clase',
       label: 'Clase / Subclase',

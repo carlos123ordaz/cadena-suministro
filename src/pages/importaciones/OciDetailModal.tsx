@@ -265,7 +265,7 @@ export function OciDetailModal({ ociId, onClose, onChanged }: Props) {
           editMode ? (
             <>
               <button className="btn" onClick={() => { setEditMode(false); setEditError(null) }}>Cancelar</button>
-              <button className="btn primary" onClick={handleSaveEdit} disabled={savingEdit || !editProv || !editForm.num_oc}>
+              <button className="btn primary" onClick={handleSaveEdit} disabled={savingEdit}>
                 {savingEdit ? 'Guardando…' : 'Guardar cambios'}
               </button>
             </>
@@ -482,7 +482,7 @@ export function OciDetailModal({ ociId, onClose, onChanged }: Props) {
                   </div>
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
                     <button className="btn sm" onClick={() => { setEditItemId(null); setItemError(null) }}>Cancelar</button>
-                    <button className="btn primary sm" onClick={handleSaveItem} disabled={savingItem || !editItemForm.descripcion || !editItemForm.cantidad || !editItemForm.pcu1}>
+                    <button className="btn primary sm" onClick={handleSaveItem} disabled={savingItem}>
                       {savingItem ? 'Guardando…' : 'Guardar ítem'}
                     </button>
                   </div>

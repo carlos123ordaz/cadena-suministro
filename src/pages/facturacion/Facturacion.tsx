@@ -423,7 +423,7 @@ export function Facturacion() {
         footer={
           <>
             <button className="btn" onClick={() => setShowNueva(false)}>Cancelar</button>
-            <button className="btn primary" onClick={handleCrearFactura} disabled={savingFactura || !facturaForm.num_factura || !facturaForm.monto_total_sin_igv}>
+            <button className="btn primary" onClick={handleCrearFactura} disabled={savingFactura}>
               {savingFactura ? 'Creando…' : 'Crear factura'}
             </button>
           </>
@@ -510,7 +510,7 @@ export function Facturacion() {
         footer={
           <>
             <button className="btn" onClick={() => { setShowPago(false); setPagoForm(defaultPago); setErrorPago(null) }}>Cancelar</button>
-            <button className="btn primary" onClick={handlePago} disabled={savingPago || !pagoForm.monto}>
+            <button className="btn primary" onClick={handlePago} disabled={savingPago}>
               {savingPago ? 'Guardando…' : 'Registrar pago'}
             </button>
           </>

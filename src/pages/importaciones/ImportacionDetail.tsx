@@ -682,7 +682,7 @@ export function ImportacionDetail() {
         footer={
           <>
             <button className="btn" onClick={() => setShowAddOci(false)}>Cancelar</button>
-            <button className="btn primary" onClick={handleAddOci} disabled={savingOci || !ociProv || !ociForm.num_oc}>
+            <button className="btn primary" onClick={handleAddOci} disabled={savingOci}>
               {savingOci ? 'Creando…' : 'Crear OCI'}
             </button>
           </>
@@ -753,7 +753,7 @@ export function ImportacionDetail() {
         footer={
           <>
             <button className="btn" onClick={() => setShowEditGrupo(false)}>Cancelar</button>
-            <button className="btn primary" onClick={handleSaveEditGrupo} disabled={savingEditGrupo || !editGrupoForm.grupo_importacion}>
+            <button className="btn primary" onClick={handleSaveEditGrupo} disabled={savingEditGrupo}>
               {savingEditGrupo ? 'Guardando…' : 'Guardar cambios'}
             </button>
           </>
@@ -829,7 +829,7 @@ export function ImportacionDetail() {
         footer={
           <>
             <button className="btn" onClick={() => setShowEditOci(false)}>Cancelar</button>
-            <button className="btn primary" onClick={handleSaveEditOci} disabled={savingEditOci || !editOciProv || !editOciForm.num_oc}>
+            <button className="btn primary" onClick={handleSaveEditOci} disabled={savingEditOci}>
               {savingEditOci ? 'Guardando…' : 'Guardar cambios'}
             </button>
           </>

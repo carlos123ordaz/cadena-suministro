@@ -575,7 +575,7 @@ export function Almacen() {
             columns={[
               { key: 'operacion',        label: 'OPCI',        render: r => <span className="mono" style={{ color: 'var(--accent-2)', fontSize: 11 }}>{(r.operacion as { correlativo_opci: string })?.correlativo_opci ?? '—'}</span> },
               { key: 'num_oc',           label: 'N° OC',       render: r => <span className="mono">{r.num_oc as string ?? '—'}</span> },
-              { key: 'codigo_comercial', label: 'Código',      render: r => <span className="mono">{r.codigo_comercial as string}</span> },
+              { key: 'codigo_comercial', label: 'Código', width: 120, render: r => <span className="mono" style={{ display: 'block', width: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.codigo_comercial as string}>{r.codigo_comercial as string}</span> },
               { key: 'descripcion',      label: 'Descripción', render: r => <span style={{ maxWidth: 160, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.descripcion as string}>{r.descripcion as string}</span> },
               { key: 'cantidad_esperada', label: 'Esp.',       align: 'right', width: 60, render: r => <span className="mono">{r.cantidad_esperada as number}</span> },
               { key: 'cantidad_recibida', label: 'Rec.',       align: 'right', width: 60, render: r => <span className="mono" style={{ color: 'var(--ok)', fontWeight: 600 }}>{r.cantidad_recibida as number}</span> },
@@ -605,7 +605,7 @@ export function Almacen() {
           <DataTable
             columns={[
               { key: 'operacion',        label: 'OPCI',         render: r => <span className="mono" style={{ color: 'var(--accent-2)', fontSize: 11 }}>{(r.operacion as { correlativo_opci: string })?.correlativo_opci ?? '—'}</span> },
-              { key: 'codigo_comercial', label: 'Código',       render: r => <span className="mono">{r.codigo_comercial as string}</span> },
+              { key: 'codigo_comercial', label: 'Código', width: 120, render: r => <span className="mono" style={{ display: 'block', width: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.codigo_comercial as string}>{r.codigo_comercial as string}</span> },
               { key: 'descripcion',      label: 'Descripción',  render: r => <span style={{ maxWidth: 200, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.descripcion as string}</span> },
               { key: 'cantidad',         label: 'Cant.',        align: 'right', render: r => <span className="mono">{r.cantidad as number}</span> },
               { key: 'unidad_medida',    label: 'UM',           width: 50 },
@@ -652,7 +652,7 @@ export function Almacen() {
           <DataTable
             columns={[
               { key: 'created_at',          label: 'Fecha',      render: r => <span className="mono">{fmtDateTime(r.created_at as string)}</span> },
-              { key: 'producto_codigo',      label: 'Código',     render: r => <span className="mono" style={{ color: 'var(--accent-2)' }}>{r.producto_codigo as string}</span> },
+              { key: 'producto_codigo',      label: 'Código', width: 120, render: r => <span className="mono" style={{ display: 'block', width: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--accent-2)' }} title={r.producto_codigo as string}>{r.producto_codigo as string}</span> },
               { key: 'tipo',                 label: 'Tipo',       render: r => {
                 const t = r.tipo as string
                 const tone = t === 'entrada' ? 'ok' : t === 'salida' ? 'bad' : t === 'ajuste' ? 'info' : 'violet'
@@ -686,7 +686,7 @@ export function Almacen() {
           </div>
           <DataTable
             columns={[
-              { key: 'producto_codigo', label: 'Código',        render: r => <span className="mono" style={{ color: 'var(--accent-2)' }}>{r.producto_codigo as string}</span> },
+              { key: 'producto_codigo', label: 'Código', width: 120, render: r => <span className="mono" style={{ display: 'block', width: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--accent-2)' }} title={r.producto_codigo as string}>{r.producto_codigo as string}</span> },
               { key: 'descripcion',     label: 'Descripción' },
               { key: 'unidad_medida',   label: 'UM',            width: 60 },
               { key: 'stock_actual',    label: 'Stock actual',   align: 'right', render: r => {
@@ -1258,7 +1258,7 @@ export function Almacen() {
         footer={
           <>
             <button className="btn" onClick={() => setShowGuiaRapida(false)}>Omitir por ahora</button>
-            <button className="btn primary" onClick={handleGuardarGuiaRapida} disabled={savingGuiaRapida || !guiaRapidaForm.numero_guia}>
+            <button className="btn primary" onClick={handleGuardarGuiaRapida} disabled={savingGuiaRapida}>
               {savingGuiaRapida ? 'Guardando…' : 'Emitir guía'}
             </button>
           </>
