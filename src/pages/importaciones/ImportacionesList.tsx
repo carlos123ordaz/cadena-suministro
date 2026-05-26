@@ -444,7 +444,7 @@ export function ImportacionesList() {
       key: 'num_oc', label: 'N° OCI', sortable: true, width: 140,
       render: r => (
         <span className="mono" style={{ color: 'var(--accent-2)', fontWeight: 600, cursor: 'pointer' }}
-          onClick={e => { e.stopPropagation(); navigate(`/importaciones/${(r.importacion as { id?: string } | undefined)?.id}?tab=items`) }}>
+          onClick={e => { e.stopPropagation(); setSelectedOciId(r.id) }}>
           {r.num_oc}
         </span>
       ),
