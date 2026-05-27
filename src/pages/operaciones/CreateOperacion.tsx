@@ -1,12 +1,11 @@
 ﻿import { useState, useEffect, useRef } from 'react'
 import { Modal, Icon } from '@/components/ui'
 import { getClientes } from '@/services/clientes.service'
-import { getProveedores } from '@/services/proveedores.service'
 import { createOperacion } from '@/services/operaciones.service'
 import { getNextCorrelativoOPCI } from '@/services/configuracion.service'
 import { supabase } from '@/lib/supabase'
 import { money, fmtDbError } from '@/lib/utils'
-import type { Cliente, Proveedor, EstadoOPCI, Currency } from '@/types'
+import type { Cliente, EstadoOPCI, Currency } from '@/types'
 
 const FORMAS_PAGO = [
   'Contado',
@@ -78,7 +77,6 @@ const dropItemStyle: React.CSSProperties = {
 export function CreateOperacion({ open, onClose, onCreated }: Props) {
   const [form, setForm] = useState<Form>(defaultForm)
   const [clientes, setClientes] = useState<Cliente[]>([])
-  const [proveedores, setProveedores] = useState<Proveedor[]>([])
   const [vendedores, setVendedores] = useState<{ id: string; nombre_completo: string }[]>([])
   const [correlatvoLoading, setCorrelatvoLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -132,7 +130,6 @@ export function CreateOperacion({ open, onClose, onCreated }: Props) {
       setCorrelatvoLoading(false)
     })
     getClientes().then(r => setClientes(r.data ?? []))
-    getProveedores().then(r => setProveedores(r.data ?? []))
     supabase
       .from('profiles')
       .select('id, nombre_completo')
@@ -169,16 +166,6 @@ export function CreateOperacion({ open, onClose, onCreated }: Props) {
     if (!q.trim()) return vendedores.slice(0, 15)
     const lower = q.toLowerCase()
     return vendedores.filter(v => v.nombre_completo.toLowerCase().includes(lower)).slice(0, 15)
-  }
-
-  function filterProveedores(q: string): Proveedor[] {
-    if (!q.trim()) return proveedores.slice(0, 10)
-    const lower = q.toLowerCase()
-    return proveedores.filter(p =>
-      p.razon_social.toLowerCase().includes(lower) ||
-      (p.ruc_nro_doc ?? '').toLowerCase().includes(lower) ||
-      (p.pais ?? '').toLowerCase().includes(lower)
-    ).slice(0, 10)
   }
 
   function set(field: keyof Form, value: string) {
@@ -377,7 +364,7 @@ export function CreateOperacion({ open, onClose, onCreated }: Props) {
           </div>
         </div>
 
-        {/* ── Cliente proveedor (combo con búsqueda, guarda texto libre) ── */}
+        {/* ── Cliente proveedor (combo con búsqueda sobre clientes, guarda texto libre) ── */}
         <div className="form-field" ref={clienteProvRef}>
           <label className="form-label">Cliente proveedor</label>
           <div style={{ position: 'relative' }}>
@@ -387,23 +374,23 @@ export function CreateOperacion({ open, onClose, onCreated }: Props) {
               value={form.cliente_proveedor}
               onChange={e => { set('cliente_proveedor', e.target.value); setShowClienteProvDrop(true) }}
               onFocus={() => setShowClienteProvDrop(true)}
-              placeholder="Buscar o escribir libremente…"
+              placeholder="Buscar cliente o escribir libremente…"
               style={{ width: '100%', paddingLeft: 30 }}
             />
             {showClienteProvDrop && (
               <div style={dropdownStyle}>
-                {filterProveedores(form.cliente_proveedor).length === 0 ? (
+                {filterClientes(form.cliente_proveedor).length === 0 ? (
                   <div style={{ ...dropItemStyle, color: 'var(--text-3)' }}>
-                    {form.cliente_proveedor ? 'Sin coincidencias — se guardará el texto escrito' : 'Sin proveedores cargados'}
+                    {form.cliente_proveedor ? 'Sin coincidencias — se guardará el texto escrito' : 'Sin clientes cargados'}
                   </div>
-                ) : filterProveedores(form.cliente_proveedor).map(p => (
-                  <div key={p.id} style={dropItemStyle}
-                    onMouseDown={() => { set('cliente_proveedor', p.razon_social); setShowClienteProvDrop(false) }}
+                ) : filterClientes(form.cliente_proveedor).map(c => (
+                  <div key={c.id} style={dropItemStyle}
+                    onMouseDown={() => { set('cliente_proveedor', c.razon_social); setShowClienteProvDrop(false) }}
                     onMouseEnter={e => (e.currentTarget.style.background = 'var(--panel-2)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                    <span style={{ fontWeight: 600, color: 'var(--text-1)' }}>{p.razon_social}</span>
-                    {p.pais && <span style={{ color: 'var(--text-3)', marginLeft: 8, fontSize: 11 }}>· {p.pais}</span>}
-                    {p.ruc_nro_doc && <span style={{ color: 'var(--text-3)', marginLeft: 8, fontSize: 11, fontFamily: 'var(--font-mono)' }}>{p.ruc_nro_doc}</span>}
+                    <span style={{ fontWeight: 600, color: 'var(--text-1)' }}>{c.razon_social}</span>
+                    {c.ruc && <span style={{ color: 'var(--text-3)', marginLeft: 8, fontSize: 11, fontFamily: 'var(--font-mono)' }}>{c.ruc}</span>}
+                    {c.ciudad && <span style={{ color: 'var(--text-3)', marginLeft: 8, fontSize: 11 }}>· {c.ciudad}</span>}
                   </div>
                 ))}
               </div>

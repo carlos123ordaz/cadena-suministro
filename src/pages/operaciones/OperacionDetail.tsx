@@ -151,6 +151,7 @@ export function OperacionDetail() {
   })
   const [itemNotas, setItemNotas] = useState<string[]>([])
   const [itemNotaInput, setItemNotaInput] = useState('')
+  const [tipoProdFiltro, setTipoProdFiltro] = useState<'Producto' | 'Servicio' | 'Proyecto' | ''>('')
   const [productosSearch, setProductosSearch] = useState('')
   const [productosSugeridos, setProductosSugeridos] = useState<Producto[]>([])
   const [showProductosDrop, setShowProductosDrop] = useState(false)
@@ -353,16 +354,17 @@ export function OperacionDetail() {
   useEffect(() => {
     if (productosSearch.length < 2) { setProductosSugeridos([]); return }
     const t = setTimeout(async () => {
-      const { data } = await supabase
+      let q = supabase
         .from('productos')
         .select('id, codigo_comercial, descripcion, unidad_medida, marca, tipo')
         .or(`codigo_comercial.ilike.%${productosSearch}%,descripcion.ilike.%${productosSearch}%`)
         .eq('activo', true)
-        .limit(20)
+      if (tipoProdFiltro) q = q.eq('tipo', tipoProdFiltro)
+      const { data } = await q.limit(20)
       setProductosSugeridos((data ?? []) as Producto[])
     }, 250)
     return () => clearTimeout(t)
-  }, [productosSearch])
+  }, [productosSearch, tipoProdFiltro])
 
   function selectProducto(p: Producto) {
     const um = p.unidad_medida || ''
@@ -390,12 +392,13 @@ export function OperacionDetail() {
   }
 
   async function handleProductoFocus() {
-    const { data } = await supabase
+    let q = supabase
       .from('productos')
       .select('id, codigo_comercial, descripcion, unidad_medida, marca, tipo')
       .eq('activo', true)
       .order('codigo_comercial')
-      .limit(20)
+    if (tipoProdFiltro) q = q.eq('tipo', tipoProdFiltro)
+    const { data } = await q.limit(20)
     setProductosSugeridos((data ?? []) as Producto[])
     setShowProductosDrop(true)
   }
@@ -457,6 +460,7 @@ export function OperacionDetail() {
     setProductosSearch('')
     umSelectedRef.current = ''
     setUmSearch('')
+    setTipoProdFiltro('')
     load()
   }
 
@@ -708,6 +712,7 @@ export function OperacionDetail() {
               { key: 'item_op',         label: 'Item OP', width: 60 },
               { key: 'codigo_comercial',label: 'Código',     render: r => <span className="mono">{r.codigo_comercial as string}</span> },
               { key: 'descripcion',     label: 'Descripción' },
+              { key: 'tipo_negocio',    label: 'Tipo', width: 80, render: r => r.tipo_negocio ? <Badge tone={r.tipo_negocio === 'Venta' ? 'ok' : r.tipo_negocio === 'Servicio' ? 'info' : 'violet'}>{r.tipo_negocio as string}</Badge> : <span className="muted">—</span> },
               { key: 'cantidad',        label: 'Cant.', align: 'right', render: r => <span className="mono">{r.cantidad as number}</span> },
               { key: 'unidad_medida',   label: 'UM', width: 60 },
               { key: 'precio_unitario', label: 'Precio U.', align: 'right', render: r => <span className="mono">{money(r.precio_unitario as number, r.moneda as string)}</span> },
@@ -979,7 +984,7 @@ export function OperacionDetail() {
       {/* Modal agregar ítem */}
       <Modal
         open={showAddItem}
-        onClose={() => { setShowAddItem(false); setItemError(null); setProductosSearch(''); setProductosSugeridos([]); setItemNotas([]); setItemNotaInput(''); umSelectedRef.current = ''; setUmSearch('') }}
+        onClose={() => { setShowAddItem(false); setItemError(null); setProductosSearch(''); setProductosSugeridos([]); setItemNotas([]); setItemNotaInput(''); umSelectedRef.current = ''; setUmSearch(''); setTipoProdFiltro('') }}
         title="Agregar ítem a la operación"
         subtitle={op?.correlativo_opci}
         size="xl"
@@ -998,6 +1003,30 @@ export function OperacionDetail() {
           </div>
         )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+
+          {/* Tipo de producto */}
+          <div className="form-field" style={{ gridColumn: '1 / -1' }}>
+            <label className="form-label">Tipo de producto</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {([['', 'Todos'], ['Producto', 'Venta'], ['Servicio', 'Servicio'], ['Proyecto', 'Proyecto']] as const).map(([val, label]) => (
+                <button
+                  key={val}
+                  type="button"
+                  className={`btn sm${tipoProdFiltro === val ? ' primary' : ''}`}
+                  onClick={() => {
+                    setTipoProdFiltro(val)
+                    setProductosSugeridos([])
+                    // Auto-completar tipo_negocio
+                    const tipoNeg = val === 'Producto' ? 'Venta' : val === 'Servicio' ? 'Servicio' : val === 'Proyecto' ? 'Proyecto' : ''
+                    if (tipoNeg) setItemForm(f => ({ ...f, tipo_negocio: tipoNeg as TipoNegocio }))
+                  }}
+                  style={{ minWidth: 80 }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Producto unificado */}
           <div className="form-field" style={{ gridColumn: '1 / -1', position: 'relative' }} ref={productoDropRef}>
@@ -1170,6 +1199,7 @@ export function OperacionDetail() {
               <option value="">— Sin especificar —</option>
               <option value="Venta">Venta</option>
               <option value="Servicio">Servicio</option>
+              <option value="Proyecto">Proyecto</option>
             </select>
           </div>
 

@@ -90,11 +90,12 @@ export function AgregarItemOciModal({ open, onClose, ordenCompraId, ordenMoneda 
     if (!opciSearch || opciSearch.length < 2) { setOpciSugeridas([]); return }
     const t = setTimeout(async () => {
       const { data } = await supabase.from('operaciones')
-        .select('id, correlativo_opci')
+        .select('id, correlativo_opci, operacion_items!inner(sub_tipo_negocio)')
+        .eq('operacion_items.sub_tipo_negocio', 'Importación')
         .ilike('correlativo_opci', `%${opciSearch}%`)
         .not('estado', 'in', '("Cerrada","Anulada")')
         .order('correlativo_opci').limit(10)
-      setOpciSugeridas((data ?? []) as { id: string; correlativo_opci: string }[])
+      setOpciSugeridas((data ?? []).map((d: Record<string, unknown>) => ({ id: d.id as string, correlativo_opci: d.correlativo_opci as string })))
       setShowOpciDrop(true)
     }, 250)
     return () => clearTimeout(t)
@@ -104,10 +105,11 @@ export function AgregarItemOciModal({ open, onClose, ordenCompraId, ordenMoneda 
     setShowOpciDrop(true)
     if (!opciSearch) {
       const { data } = await supabase.from('operaciones')
-        .select('id, correlativo_opci')
+        .select('id, correlativo_opci, operacion_items!inner(sub_tipo_negocio)')
+        .eq('operacion_items.sub_tipo_negocio', 'Importación')
         .not('estado', 'in', '("Cerrada","Anulada")')
         .order('correlativo_opci').limit(20)
-      setOpciSugeridas((data ?? []) as { id: string; correlativo_opci: string }[])
+      setOpciSugeridas((data ?? []).map((d: Record<string, unknown>) => ({ id: d.id as string, correlativo_opci: d.correlativo_opci as string })))
     }
   }
 

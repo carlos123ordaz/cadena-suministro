@@ -28,13 +28,19 @@ export function OperacionesList({ onCreateNew }: Props) {
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
 
-  const [q, setQ] = useState('')
-  const [estado, setEstado] = useState('')
-  const [clienteId, setClienteId] = useState('')
-  const [fechaDesde, setFechaDesde] = useState('')
-  const [fechaHasta, setFechaHasta] = useState('')
+  // Filtros con persistencia en localStorage
+  const _sf = (() => { try { return JSON.parse(localStorage.getItem('filters_operaciones') ?? '{}') } catch { return {} } })()
+  const [q, setQ] = useState<string>(_sf.q ?? '')
+  const [estado, setEstado] = useState<string>(_sf.estado ?? '')
+  const [clienteId, setClienteId] = useState<string>(_sf.clienteId ?? '')
+  const [fechaDesde, setFechaDesde] = useState<string>(_sf.fechaDesde ?? '')
+  const [fechaHasta, setFechaHasta] = useState<string>(_sf.fechaHasta ?? '')
 
-  const [clienteSearch, setClienteSearch] = useState('')
+  const [clienteSearch, setClienteSearch] = useState<string>(_sf.clienteSearch ?? '')
+
+  useEffect(() => {
+    localStorage.setItem('filters_operaciones', JSON.stringify({ q, estado, clienteId, fechaDesde, fechaHasta, clienteSearch }))
+  }, [q, estado, clienteId, fechaDesde, fechaHasta, clienteSearch])
   const [clienteDropOpen, setClienteDropOpen] = useState(false)
   const clienteRef = useRef<HTMLDivElement>(null)
 
@@ -59,7 +65,7 @@ export function OperacionesList({ onCreateNew }: Props) {
     const { data, count } = await getOperaciones(
       { search: q || undefined, estado: (estado as EstadoOPCI) || undefined, cliente_id: clienteId || undefined, fecha_desde: fechaDesde || undefined, fecha_hasta: fechaHasta || undefined },
       { page, pageSize: 25 },
-      { field: 'fecha_recepcion', direction: 'desc' },
+      { field: 'created_at', direction: 'desc' },
     )
     setOperaciones(data ?? [])
     setTotal(count)

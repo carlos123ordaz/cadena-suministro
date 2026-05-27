@@ -138,10 +138,22 @@ export async function getCobranzaPendiente(): Promise<{ data: FacturaVenta[] | n
 export async function cambiarEstadoFactura(
   facturaId: UUID,
   nuevoStatus: EstadoFactura,
+  userId?: UUID,
+  statusAnterior?: string,
 ): Promise<{ error: unknown }> {
   const { error } = await supabase
     .from('facturas_venta')
     .update({ status: nuevoStatus })
     .eq('id', facturaId)
+  if (!error) {
+    await supabase.from('historial_eventos').insert({
+      entidad_tipo: 'factura',
+      entidad_id: facturaId,
+      usuario_id: userId ?? null,
+      accion: 'Cambio de estado',
+      valor_anterior: statusAnterior ?? null,
+      valor_nuevo: nuevoStatus,
+    })
+  }
   return { error }
 }

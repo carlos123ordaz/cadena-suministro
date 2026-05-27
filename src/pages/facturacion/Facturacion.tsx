@@ -226,7 +226,7 @@ export function Facturacion() {
   async function handleCambiarEstadoFactura() {
     if (!selected || !nuevoEstadoFact) return
     setSavingEstadoFact(true)
-    await cambiarEstadoFactura(selected.id, nuevoEstadoFact)
+    await cambiarEstadoFactura(selected.id, nuevoEstadoFact, profile?.id, selected.status)
     setSavingEstadoFact(false)
     setShowEstado(false)
     setNuevoEstadoFact('')

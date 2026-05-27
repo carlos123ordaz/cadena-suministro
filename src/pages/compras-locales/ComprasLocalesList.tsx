@@ -53,9 +53,16 @@ export function ComprasLocalesList() {
   const [rows, setRows] = useState<OrdenCompraLocal[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [filterEstado, setFilterEstado] = useState<EstadoOCL | ''>('')
-  const [filterProveedor, setFilterProveedor] = useState('')
+
+  // Filtros con persistencia en localStorage
+  const _sf = (() => { try { return JSON.parse(localStorage.getItem('filters_compras_locales') ?? '{}') } catch { return {} } })()
+  const [search, setSearch] = useState<string>(_sf.search ?? '')
+  const [filterEstado, setFilterEstado] = useState<EstadoOCL | ''>(_sf.filterEstado ?? '')
+  const [filterProveedor, setFilterProveedor] = useState<string>(_sf.filterProveedor ?? '')
+
+  useEffect(() => {
+    localStorage.setItem('filters_compras_locales', JSON.stringify({ search, filterEstado, filterProveedor }))
+  }, [search, filterEstado, filterProveedor])
 
   // ── Modal: Editar OC ──────────────────────────────────────────────────
   const [editRow, setEditRow] = useState<OrdenCompraLocal | null>(null)

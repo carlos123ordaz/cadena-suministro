@@ -82,12 +82,24 @@ export async function getImportacion(id: UUID): Promise<{
 
 export async function createImportacion(
   payload: Omit<Importacion, 'id' | 'created_at' | 'updated_at'>,
+  userId?: UUID,
 ): Promise<{ data: Importacion | null; error: unknown }> {
   const { data, error } = await supabase
     .from('importaciones')
     .insert(payload)
     .select('*')
     .single()
+
+  if (!error && data) {
+    const imp = data as Importacion
+    await supabase.from('historial_eventos').insert({
+      entidad_tipo: 'importacion',
+      entidad_id: imp.id,
+      usuario_id: userId ?? null,
+      accion: 'Creación',
+      valor_nuevo: imp.status,
+    })
+  }
 
   return { data: data as Importacion | null, error }
 }

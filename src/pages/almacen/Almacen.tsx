@@ -26,12 +26,16 @@ const today = new Date().toISOString().slice(0, 10)
 
 interface RecItemRow {
   id: string
+  orden_compra_id: string
+  num_oc: string
   item_oc: string
   codigo_comercial: string
   descripcion: string
   unidad_medida: string
   cantidad_oc: number
   cantidad_recibida: string
+  conf_almacen: ConformidadRecepcion | ''
+  nota: string
 }
 
 interface OCListItem {
@@ -42,6 +46,11 @@ interface OCListItem {
   importacion_id: string | null
   proveedor?: { razon_social: string }
   operacion?: { correlativo_opci: string }
+}
+
+interface GrupoImportacion {
+  id: string
+  grupo_importacion: string
 }
 
 interface DespachoForm {
@@ -65,8 +74,10 @@ export function Almacen() {
   const [stock, setStock] = useState<Record<string, unknown>[]>([])
   const [loading, setLoading] = useState(false)
 
+  // ── Vista ─────────────────────────────────────────────────────────────
+  const [view, setView] = useState<'list' | 'rec-form'>('list')
+
   // ── Recepción ─────────────────────────────────────────────────────────
-  const [showRec, setShowRec] = useState(false)
   const [savingRec, setSavingRec] = useState(false)
   const [recError, setRecError] = useState<string | null>(null)
   const [almacenesList, setAlmacenesList] = useState<{ id: string; nombre: string; codigo: string }[]>([])
@@ -75,12 +86,18 @@ export function Almacen() {
   const [showOcDrop, setShowOcDrop] = useState(false)
   const ocRef = useRef<HTMLDivElement>(null)
   const ocSelectedRef = useRef('')
+
+  // Grupo de importación
+  const [grupoList, setGrupoList] = useState<GrupoImportacion[]>([])
+  const [grupoSearch, setGrupoSearch] = useState('')
+  const [showGrupoDrop, setShowGrupoDrop] = useState(false)
+  const [selectedGrupoId, setSelectedGrupoId] = useState('')
+  const grupoRef = useRef<HTMLDivElement>(null)
+
   const [recHeader, setRecHeader] = useState({
     almacen_id: '',
     orden_compra_id: '',
     fecha_recepcion: today,
-    conf_almacen: 'Conforme' as ConformidadRecepcion,
-    motivo_conf_almacen: '',
     erp_inta_entrada: '',
     notas: '',
   })
@@ -251,22 +268,32 @@ export function Almacen() {
 
   useEffect(() => { loadTab() }, [loadTab])
 
-  // ── Load almacenes + OC list when modal opens ─────────────────────────
+  // ── Load almacenes + OC list (solo locales) + grupos when form opens ──
   useEffect(() => {
-    if (!showRec) return
+    if (view !== 'rec-form') return
     getAlmacenes().then(r => {
       const list = r.data ?? []
       setAlmacenesList(list)
       if (list.length === 1) setRecHeader(h => ({ ...h, almacen_id: list[0].id }))
     })
+    // Solo OCs locales para el campo "Orden de Compra"
     supabase
       .from('ordenes_compra')
       .select('id, num_oc, tipo, operacion_id, importacion_id, proveedor:proveedores(razon_social), operacion:operaciones(correlativo_opci)')
+      .eq('tipo', 'Local')
       .not('status', 'in', '("Cerrado","Anulado")')
       .order('created_at', { ascending: false })
       .limit(200)
       .then(({ data }) => setOcList((data ?? []) as unknown as OCListItem[]))
-  }, [showRec])
+    // Grupos de importación
+    supabase
+      .from('importaciones')
+      .select('id, grupo_importacion')
+      .not('status', 'in', '("Cerrada","Anulada")')
+      .order('grupo_importacion')
+      .limit(200)
+      .then(({ data }) => setGrupoList((data ?? []) as unknown as GrupoImportacion[]))
+  }, [view])
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -274,36 +301,88 @@ export function Almacen() {
         setShowOcDrop(false)
         setOcSearch(ocSelectedRef.current)
       }
+      if (grupoRef.current && !grupoRef.current.contains(e.target as Node)) {
+        setShowGrupoDrop(false)
+      }
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  // ── Load OC items when OC changes ─────────────────────────────────────
+  // ── Load OC items when OC changes (solo compras locales) ──────────────
   useEffect(() => {
     const ocId = recHeader.orden_compra_id
-    if (!ocId) { setRecItems([]); return }
+    if (!ocId) { if (!selectedGrupoId) setRecItems([]); return }
     setLoadingOcItems(true)
+    const ocInfo = ocList.find(o => o.id === ocId)
     supabase
       .from('orden_compra_items')
-      .select('id, item_oc, codigo_comercial, descripcion, unidad_medida, cantidad')
+      .select('id, orden_compra_id, item_oc, codigo_comercial, descripcion, unidad_medida, cantidad')
       .eq('orden_compra_id', ocId)
       .order('item_oc', { nullsFirst: false })
       .then(({ data }) => {
         setRecItems(
           (data ?? []).map(item => ({
             id: item.id as string,
+            orden_compra_id: (item.orden_compra_id as string) ?? ocId,
+            num_oc: ocInfo?.num_oc ?? '',
             item_oc: (item.item_oc as string) ?? '',
             codigo_comercial: (item.codigo_comercial as string) ?? '',
             descripcion: (item.descripcion as string) ?? '',
             unidad_medida: (item.unidad_medida as string) ?? 'UND',
             cantidad_oc: Number(item.cantidad) ?? 0,
             cantidad_recibida: String(item.cantidad ?? ''),
+            conf_almacen: 'Conforme' as ConformidadRecepcion,
+            nota: '',
           })),
         )
         setLoadingOcItems(false)
       })
-  }, [recHeader.orden_compra_id])
+  }, [recHeader.orden_compra_id, selectedGrupoId])
+
+  // ── Load OC items when grupo de importación changes ────────────────────
+  useEffect(() => {
+    if (!selectedGrupoId) { if (!recHeader.orden_compra_id) setRecItems([]); return }
+    setLoadingOcItems(true)
+    // Cargar todos los ítems de todas las OCs del grupo
+    supabase
+      .from('ordenes_compra')
+      .select('id, num_oc')
+      .eq('importacion_id', selectedGrupoId)
+      .not('status', 'in', '("Cerrado","Anulado","Cerrada","Anulada")')
+      .then(async ({ data: ocs }) => {
+        if (!ocs || ocs.length === 0) {
+          setRecItems([])
+          setLoadingOcItems(false)
+          return
+        }
+        const ocsTyped = ocs as { id: string; num_oc: string }[]
+        const ocIds = ocsTyped.map(o => o.id)
+        const numOcMap = Object.fromEntries(ocsTyped.map(o => [o.id, o.num_oc]))
+        const { data: items } = await supabase
+          .from('orden_compra_items')
+          .select('id, orden_compra_id, item_oc, codigo_comercial, descripcion, unidad_medida, cantidad')
+          .in('orden_compra_id', ocIds)
+          .order('orden_compra_id')
+          .order('item_oc', { nullsFirst: false })
+        setRecItems(
+          (items ?? []).map(item => ({
+            id: item.id as string,
+            orden_compra_id: item.orden_compra_id as string,
+            num_oc: numOcMap[item.orden_compra_id as string] ?? '',
+            item_oc: (item.item_oc as string) ?? '',
+            codigo_comercial: (item.codigo_comercial as string) ?? '',
+            descripcion: (item.descripcion as string) ?? '',
+            unidad_medida: (item.unidad_medida as string) ?? 'UND',
+            cantidad_oc: Number(item.cantidad) ?? 0,
+            cantidad_recibida: String(item.cantidad ?? ''),
+            conf_almacen: 'Conforme' as ConformidadRecepcion,
+            nota: '',
+          })),
+        )
+        setLoadingOcItems(false)
+      })
+  }, [selectedGrupoId])
 
   // ── Despacho: product search ──────────────────────────────────────────
   useEffect(() => {
@@ -397,7 +476,10 @@ export function Almacen() {
   async function handleRegistrarRecepcion() {
     if (!profile) { setRecError('Error de sesión. Recarga la página.'); return }
     if (!recHeader.almacen_id) { setRecError('Selecciona un almacén.'); return }
-    if (recItems.length === 0) { setRecError('Selecciona una OC para cargar los ítems.'); return }
+    if (recItems.length === 0) {
+      setRecError('Selecciona una OC o un grupo de importación para cargar los ítems.')
+      return
+    }
 
     const itemsToSave = recItems.filter(i => {
       const cr = parseFloat(i.cantidad_recibida)
@@ -412,25 +494,33 @@ export function Almacen() {
     setSavingRec(true)
     setRecError(null)
 
+    // Registrar un ítem por vez
+    const savedOcIds = new Set<string>()
     for (const item of itemsToSave) {
+      // Obtener la OC del ítem (puede ser de cualquier OC del grupo)
+      const itemOc = recHeader.orden_compra_id
+        ? oc
+        : ocList.find(o => o.id === item.orden_compra_id) ??
+          { id: item.orden_compra_id, num_oc: '', tipo: 'Importacion', operacion_id: null, importacion_id: selectedGrupoId || null }
+
       const { error } = await registrarRecepcion(
         {
           almacen_id: recHeader.almacen_id,
-          orden_compra_id: recHeader.orden_compra_id || undefined,
-          operacion_id: oc?.operacion_id || undefined,
-          importacion_id: oc?.importacion_id || undefined,
-          num_oc: oc?.num_oc || undefined,
+          orden_compra_id: item.orden_compra_id || undefined,
+          operacion_id: (itemOc as OCListItem | undefined)?.operacion_id || undefined,
+          importacion_id: selectedGrupoId || (itemOc as OCListItem | undefined)?.importacion_id || undefined,
+          num_oc: (itemOc as OCListItem | undefined)?.num_oc || undefined,
           item_oc: item.item_oc || undefined,
           codigo_comercial: item.codigo_comercial,
           descripcion: item.descripcion,
           cantidad_esperada: item.cantidad_oc,
           cantidad_recibida: parseFloat(item.cantidad_recibida),
           unidad_medida: item.unidad_medida,
-          conf_almacen: recHeader.conf_almacen,
-          motivo_conf_almacen: recHeader.motivo_conf_almacen || undefined,
+          conf_almacen: item.conf_almacen || undefined,
+          motivo_conf_almacen: undefined,
           fecha_recepcion: recHeader.fecha_recepcion || undefined,
           erp_inta_entrada: recHeader.erp_inta_entrada || undefined,
-          notas: recHeader.notas || undefined,
+          notas: item.nota || recHeader.notas || undefined,
           estado: 'Pendiente',
         } as unknown as Omit<Recepcion, 'id' | 'created_at' | 'updated_at'>,
         profile.id,
@@ -440,20 +530,28 @@ export function Almacen() {
         setSavingRec(false)
         return
       }
+      if (item.orden_compra_id) savedOcIds.add(item.orden_compra_id)
+    }
+
+    // Actualizar estado de cada OC afectada
+    for (const ocId of savedOcIds) {
+      await supabase.rpc('actualizar_estado_oc_por_recepcion', { p_orden_compra_id: ocId })
     }
 
     setSavingRec(false)
-    setShowRec(false)
+    setView('list')
     resetRec()
     loadTab()
   }
 
   function resetRec() {
-    setRecHeader({ almacen_id: '', orden_compra_id: '', fecha_recepcion: today, conf_almacen: 'Conforme', motivo_conf_almacen: '', erp_inta_entrada: '', notas: '' })
+    setRecHeader({ almacen_id: '', orden_compra_id: '', fecha_recepcion: today, erp_inta_entrada: '', notas: '' })
     setRecItems([])
     setRecError(null)
     ocSelectedRef.current = ''
     setOcSearch('')
+    setGrupoSearch('')
+    setSelectedGrupoId('')
   }
 
   // ── Registrar despacho ────────────────────────────────────────────────
@@ -532,41 +630,381 @@ export function Almacen() {
 
   return (
     <div className="page">
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Almacén</h1>
-          <div className="page-sub">Control de recepciones, despachos y movimientos de inventario</div>
-        </div>
-        <div className="page-actions">
-          {tab === 'recepciones' && (
-            <button className="btn primary sm" onClick={() => setShowRec(true)}>
-              <Icon name="plus" size={13} /> Registrar recepción
-            </button>
-          )}
-          {tab === 'despachos' && (
-            <button className="btn primary sm" onClick={() => {
-              resetDesp()
-              setShowDesp(true)
-              getAlmacenes().then(r => {
-                const list = r.data ?? []
-                setAlmacenesList(list)
-                if (list.length === 1) setDespForm(d => ({ ...d, almacen_id: list[0].id }))
-              })
-            }}>
-              <Icon name="plus" size={13} /> Registrar despacho
-            </button>
-          )}
-        </div>
-      </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
-        <KPI label="Recepciones pendientes" value={pendRec}  deltaTone={pendRec > 0 ? 'down' : ''} delta={pendRec > 0 ? 'por procesar' : ''} icon="warehouse" />
-        <KPI label="Recepciones observadas" value={obsRec}   deltaTone={obsRec > 0 ? 'down' : ''} delta={obsRec > 0 ? 'requieren revisión' : ''} icon="warning" />
-        <KPI label="Despachos pendientes"   value={pendDesp} deltaTone={pendDesp > 0 ? 'down' : ''} delta={pendDesp > 0 ? 'en preparación' : ''} icon="truck" />
-        <KPI label="Productos en stock"     value={stock.length} icon="box" />
-      </div>
+      {/* ── Sub-vista: Formulario de recepción ─────────────────────────── */}
+      {view === 'rec-form' && (
+        <>
+          <div className="page-head">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button
+                className="btn ghost sm"
+                onClick={() => { resetRec(); setView('list') }}
+                style={{ display: 'flex', alignItems: 'center', gap: 5 }}
+              >
+                <Icon name="arrow-left" size={13} /> Volver
+              </button>
+              <div>
+                <h1 className="page-title">Registrar recepción</h1>
+                <div className="page-sub">Almacén · Recepciones</div>
+              </div>
+            </div>
+            <div className="page-actions">
+              <button className="btn sm" onClick={() => { resetRec(); setView('list') }}>Cancelar</button>
+              <button
+                className="btn primary sm"
+                onClick={handleRegistrarRecepcion}
+                disabled={savingRec}
+              >
+                {savingRec
+                  ? <><Icon name="spinner" size={12} style={{ animation: 'spin 1s linear infinite' }} /> Registrando…</>
+                  : <><Icon name="plus" size={13} /> Registrar recepción</>
+                }
+              </button>
+            </div>
+          </div>
 
-      <Tabs tabs={TABS} active={tab} onChange={setTab} />
+          {recError && (
+            <div style={{ background: 'var(--bad-soft)', border: '1px solid var(--bad)', borderRadius: 6, padding: '8px 12px', fontSize: 12.5, color: 'var(--bad)', marginBottom: 14 }}>
+              {recError}
+            </div>
+          )}
+
+          <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 10, padding: 24 }}>
+
+            {/* Campos globales */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 24 }}>
+
+              {/* Almacén */}
+              <div className="form-field" style={{ gridColumn: '1 / -1' }}>
+                <label className="form-label">Almacén *</label>
+                <select
+                  className="select"
+                  value={recHeader.almacen_id}
+                  onChange={e => setRecHeader(h => ({ ...h, almacen_id: e.target.value }))}
+                  style={{ width: '100%' }}
+                >
+                  <option value="">— Seleccionar almacén —</option>
+                  {almacenesList.map(a => (
+                    <option key={a.id} value={a.id}>{a.nombre} {a.codigo ? `(${a.codigo})` : ''}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Grupo de Importación */}
+              <div className="form-field" ref={grupoRef} style={{ position: 'relative' }}>
+                <label className="form-label">Grupo de importación</label>
+                <div style={{ position: 'relative' }}>
+                  <Icon name="search" size={12} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', pointerEvents: 'none' }} />
+                  <input
+                    className="input"
+                    value={grupoSearch}
+                    style={{ width: '100%', paddingLeft: 28, fontFamily: 'var(--font-mono)' }}
+                    placeholder="Buscar grupo de importación…"
+                    autoComplete="off"
+                    onFocus={() => setShowGrupoDrop(true)}
+                    onChange={e => {
+                      setGrupoSearch(e.target.value)
+                      setShowGrupoDrop(true)
+                      if (recHeader.orden_compra_id) {
+                        setRecHeader(h => ({ ...h, orden_compra_id: '' }))
+                        ocSelectedRef.current = ''
+                        setOcSearch('')
+                      }
+                    }}
+                  />
+                  {selectedGrupoId && (
+                    <button
+                      className="btn ghost xs"
+                      style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
+                      onClick={() => { setSelectedGrupoId(''); setGrupoSearch(''); setRecItems([]) }}
+                    >
+                      <Icon name="x" size={11} />
+                    </button>
+                  )}
+                </div>
+                {showGrupoDrop && (() => {
+                  const q = grupoSearch.toLowerCase()
+                  const filtered = q ? grupoList.filter(g => g.grupo_importacion.toLowerCase().includes(q)) : grupoList
+                  return filtered.length > 0 ? (
+                    <div style={{
+                      position: 'absolute', zIndex: 50, top: '100%', left: 0, right: 0,
+                      background: 'var(--panel)', border: '1px solid var(--border)',
+                      borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,.15)',
+                      maxHeight: 200, overflowY: 'auto', marginTop: 2,
+                    }}>
+                      {filtered.map(g => (
+                        <div
+                          key={g.id}
+                          onMouseDown={() => { setSelectedGrupoId(g.id); setGrupoSearch(g.grupo_importacion); setShowGrupoDrop(false) }}
+                          style={{
+                            padding: '7px 12px', cursor: 'pointer', fontSize: 13,
+                            fontFamily: 'var(--font-mono)',
+                            background: selectedGrupoId === g.id ? 'var(--accent-soft)' : undefined,
+                            color: selectedGrupoId === g.id ? 'var(--accent)' : 'var(--text)',
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted-soft)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = selectedGrupoId === g.id ? 'var(--accent-soft)' : '')}
+                        >
+                          {g.grupo_importacion}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null
+                })()}
+              </div>
+
+              {/* OC Local */}
+              <div className="form-field" ref={ocRef} style={{ position: 'relative' }}>
+                <label className="form-label">Orden de Compra local</label>
+                <div style={{ position: 'relative' }}>
+                <input
+                  className="input"
+                  value={ocSearch}
+                  style={{ width: '100%', fontFamily: 'var(--font-mono)' }}
+                  placeholder="Buscar número de OC local…"
+                  autoComplete="off"
+                  onFocus={() => { setOcSearch(''); setShowOcDrop(true) }}
+                  onBlur={() => setOcSearch(ocSelectedRef.current)}
+                  onChange={e => {
+                    setOcSearch(e.target.value)
+                    setShowOcDrop(true)
+                    if (selectedGrupoId) { setSelectedGrupoId(''); setGrupoSearch('') }
+                  }}
+                />
+                {recHeader.orden_compra_id && (
+                  <button
+                    className="btn ghost xs"
+                    style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
+                    onMouseDown={e => {
+                      e.preventDefault()
+                      setRecHeader(h => ({ ...h, orden_compra_id: '' }))
+                      ocSelectedRef.current = ''
+                      setOcSearch('')
+                      setRecItems([])
+                      setShowOcDrop(false)
+                    }}
+                  >
+                    <Icon name="x" size={11} />
+                  </button>
+                )}
+                </div>
+                {showOcDrop && (() => {
+                  const q = ocSearch.toLowerCase()
+                  const filtered = q ? ocList.filter(o => o.num_oc.toLowerCase().includes(q)) : ocList
+                  return filtered.length > 0 ? (
+                    <div style={{
+                      position: 'absolute', zIndex: 50, top: '100%', left: 0, right: 0,
+                      background: 'var(--panel)', border: '1px solid var(--border)',
+                      borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,.15)',
+                      maxHeight: 200, overflowY: 'auto', marginTop: 2,
+                    }}>
+                      {filtered.map(oc => (
+                        <div
+                          key={oc.id}
+                          onMouseDown={() => {
+                            ocSelectedRef.current = oc.num_oc
+                            setOcSearch(oc.num_oc)
+                            setRecHeader(h => ({ ...h, orden_compra_id: oc.id }))
+                            setShowOcDrop(false)
+                          }}
+                          style={{
+                            padding: '7px 12px', cursor: 'pointer', fontSize: 13,
+                            fontFamily: 'var(--font-mono)',
+                            background: recHeader.orden_compra_id === oc.id ? 'var(--accent-soft)' : undefined,
+                            color: recHeader.orden_compra_id === oc.id ? 'var(--accent)' : 'var(--text)',
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted-soft)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = recHeader.orden_compra_id === oc.id ? 'var(--accent-soft)' : '')}
+                        >
+                          {oc.num_oc}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null
+                })()}
+              </div>
+
+              {/* Fecha recepción */}
+              <div className="form-field">
+                <label className="form-label">Fecha recepción *</label>
+                <input
+                  type="date"
+                  className="input"
+                  value={recHeader.fecha_recepcion}
+                  onChange={e => setRecHeader(h => ({ ...h, fecha_recepcion: e.target.value }))}
+                  style={{ width: '100%' }}
+                />
+              </div>
+
+              {/* ERP Entrada */}
+              <div className="form-field">
+                <label className="form-label">N° ERP / INTA Entrada</label>
+                <input
+                  className="input"
+                  value={recHeader.erp_inta_entrada}
+                  onChange={e => setRecHeader(h => ({ ...h, erp_inta_entrada: e.target.value }))}
+                  style={{ width: '100%', fontFamily: 'var(--font-mono)' }}
+                  placeholder="Ej: INTA-2026-001"
+                />
+              </div>
+
+              {/* Notas generales */}
+              <div className="form-field" style={{ gridColumn: '1 / -1' }}>
+                <label className="form-label">Notas generales</label>
+                <textarea
+                  className="input"
+                  rows={2}
+                  value={recHeader.notas}
+                  onChange={e => setRecHeader(h => ({ ...h, notas: e.target.value }))}
+                  style={{ width: '100%', resize: 'vertical' }}
+                />
+              </div>
+            </div>
+
+            {/* Items de la OC / Grupo */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>Ítems a recibir</span>
+                {recItems.length > 0 && <Badge tone="muted">{recItems.length}</Badge>}
+              </div>
+
+              {!recHeader.orden_compra_id && !selectedGrupoId ? (
+                <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 12.5, border: '1px dashed var(--border)', borderRadius: 6 }}>
+                  Selecciona una OC local o un grupo de importación para cargar los ítems
+                </div>
+              ) : loadingOcItems ? (
+                <div className="loading-row" style={{ padding: 24 }}>
+                  <Icon name="spinner" size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                  <span style={{ marginLeft: 8 }}>Cargando ítems…</span>
+                </div>
+              ) : recItems.length === 0 ? (
+                <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 12.5, border: '1px dashed var(--border)', borderRadius: 6 }}>
+                  La selección no tiene ítems registrados
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                    <thead>
+                      <tr style={{ background: 'var(--panel-2)', borderBottom: '1px solid var(--border)' }}>
+                        {['', 'N° OC', 'Item OC', 'Código', 'Descripción', 'UM', 'Cant. OC', 'Cant. recibida *', 'Conformidad', 'Nota'].map(h => (
+                          <th key={h} style={{ padding: '7px 10px', textAlign: h.startsWith('Cant') ? 'right' : 'left', color: 'var(--text-3)', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recItems.map((item, idx) => (
+                        <tr key={item.id} style={{ borderBottom: '1px solid var(--border-soft)' }}>
+                          <td style={{ padding: '4px 6px', textAlign: 'center' }}>
+                            <button
+                              title="Quitar ítem"
+                              onClick={() => setRecItems(prev => prev.filter((_, i) => i !== idx))}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: '2px 6px', borderRadius: 4, lineHeight: 1, fontSize: 15 }}
+                              onMouseEnter={e => (e.currentTarget.style.color = 'var(--danger)')}
+                              onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-3)')}
+                            >✕</button>
+                          </td>
+                          <td style={{ padding: '6px 10px' }}>
+                            <span className="mono" style={{ color: 'var(--accent)', fontSize: 11, fontWeight: 600 }}>{item.num_oc || '—'}</span>
+                          </td>
+                          <td style={{ padding: '6px 10px' }}>
+                            <span className="mono muted">{item.item_oc || '—'}</span>
+                          </td>
+                          <td style={{ padding: '6px 10px' }}>
+                            <span className="mono" style={{ color: 'var(--accent-2)' }}>{item.codigo_comercial}</span>
+                          </td>
+                          <td style={{ padding: '6px 10px', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.descripcion}>
+                            {item.descripcion}
+                          </td>
+                          <td style={{ padding: '6px 10px', textAlign: 'center' }}>
+                            <span className="mono muted">{item.unidad_medida}</span>
+                          </td>
+                          <td style={{ padding: '6px 10px', textAlign: 'right' }}>
+                            <span className="mono">{item.cantidad_oc}</span>
+                          </td>
+                          <td style={{ padding: '6px 10px', textAlign: 'right' }}>
+                            <input
+                              type="number"
+                              className="input"
+                              value={item.cantidad_recibida}
+                              min="0"
+                              step="any"
+                              style={{ width: 88, fontFamily: 'var(--font-mono)', textAlign: 'right', padding: '4px 8px' }}
+                              onChange={e => setRecItems(prev => prev.map((it, i) => i === idx ? { ...it, cantidad_recibida: e.target.value } : it))}
+                            />
+                          </td>
+                          <td style={{ padding: '6px 10px' }}>
+                            <select
+                              className="select"
+                              value={item.conf_almacen}
+                              style={{ fontSize: 11.5, padding: '3px 6px', minWidth: 100 }}
+                              onChange={e => setRecItems(prev => prev.map((it, i) => i === idx ? { ...it, conf_almacen: e.target.value as ConformidadRecepcion | '' } : it))}
+                            >
+                              <option value="">— Sin esp. —</option>
+                              <option value="Conforme">Conforme</option>
+                              <option value="Observado">Observado</option>
+                              <option value="Rechazado">Rechazado</option>
+                            </select>
+                          </td>
+                          <td style={{ padding: '6px 10px' }}>
+                            <input
+                              className="input"
+                              value={item.nota}
+                              placeholder="Nota del ítem…"
+                              style={{ minWidth: 140, fontSize: 11.5, padding: '3px 8px' }}
+                              onChange={e => setRecItems(prev => prev.map((it, i) => i === idx ? { ...it, nota: e.target.value } : it))}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Vista lista ────────────────────────────────────────────────── */}
+      {view === 'list' && (
+        <>
+          <div className="page-head">
+            <div>
+              <h1 className="page-title">Almacén</h1>
+              <div className="page-sub">Control de recepciones, despachos y movimientos de inventario</div>
+            </div>
+            <div className="page-actions">
+              {tab === 'recepciones' && (
+                <button className="btn primary sm" onClick={() => { resetRec(); setView('rec-form') }}>
+                  <Icon name="plus" size={13} /> Registrar recepción
+                </button>
+              )}
+              {tab === 'despachos' && (
+                <button className="btn primary sm" onClick={() => {
+                  resetDesp()
+                  setShowDesp(true)
+                  getAlmacenes().then(r => {
+                    const list = r.data ?? []
+                    setAlmacenesList(list)
+                    if (list.length === 1) setDespForm(d => ({ ...d, almacen_id: list[0].id }))
+                  })
+                }}>
+                  <Icon name="plus" size={13} /> Registrar despacho
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+            <KPI label="Recepciones pendientes" value={pendRec}  deltaTone={pendRec > 0 ? 'down' : ''} delta={pendRec > 0 ? 'por procesar' : ''} icon="warehouse" />
+            <KPI label="Recepciones observadas" value={obsRec}   deltaTone={obsRec > 0 ? 'down' : ''} delta={obsRec > 0 ? 'requieren revisión' : ''} icon="warning" />
+            <KPI label="Despachos pendientes"   value={pendDesp} deltaTone={pendDesp > 0 ? 'down' : ''} delta={pendDesp > 0 ? 'en preparación' : ''} icon="truck" />
+            <KPI label="Productos en stock"     value={stock.length} icon="box" />
+          </div>
+
+          <Tabs tabs={TABS} active={tab} onChange={setTab} />
 
       {/* Recepciones */}
       {tab === 'recepciones' && (
@@ -702,259 +1140,10 @@ export function Almacen() {
         </Card>
       )}
 
-      {/* ── Modal: Registrar recepción ─────────────────────────────────── */}
-      <Modal
-        open={showRec}
-        onClose={() => { setShowRec(false); resetRec() }}
-        title="Registrar recepción"
-        size="xl"
-        footer={
-          <>
-            <button className="btn" onClick={() => { setShowRec(false); resetRec() }}>Cancelar</button>
-            <button
-              className="btn primary"
-              onClick={handleRegistrarRecepcion}
-              disabled={savingRec}
-            >
-              {savingRec ? <><Icon name="spinner" size={12} style={{ animation: 'spin 1s linear infinite' }} /> Registrando…</> : 'Registrar recepción'}
-            </button>
-          </>
-        }
-      >
-        {recError && (
-          <div style={{ background: 'var(--bad-soft)', border: '1px solid var(--bad)', borderRadius: 6, padding: '8px 12px', fontSize: 12.5, color: 'var(--bad)', marginBottom: 14 }}>
-            {recError}
-          </div>
-        )}
+        </>
+      )}
 
-        {/* Campos globales */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
-
-          {/* Almacén */}
-          <div className="form-field">
-            <label className="form-label">Almacén *</label>
-            <select
-              className="select"
-              value={recHeader.almacen_id}
-              onChange={e => setRecHeader(h => ({ ...h, almacen_id: e.target.value }))}
-              style={{ width: '100%' }}
-            >
-              <option value="">— Seleccionar almacén —</option>
-              {almacenesList.map(a => (
-                <option key={a.id} value={a.id}>{a.nombre} {a.codigo ? `(${a.codigo})` : ''}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* OC */}
-          <div className="form-field" ref={ocRef} style={{ position: 'relative' }}>
-            <label className="form-label">Orden de Compra *</label>
-            <input
-              className="input"
-              value={ocSearch}
-              style={{ width: '100%', fontFamily: 'var(--font-mono)' }}
-              placeholder="Buscar número de OC…"
-              autoComplete="off"
-              onFocus={() => { setOcSearch(''); setShowOcDrop(true) }}
-              onBlur={() => setOcSearch(ocSelectedRef.current)}
-              onChange={e => { setOcSearch(e.target.value); setShowOcDrop(true) }}
-            />
-            {showOcDrop && (() => {
-              const q = ocSearch.toLowerCase()
-              const filtered = q ? ocList.filter(o => o.num_oc.toLowerCase().includes(q)) : ocList
-              return filtered.length > 0 ? (
-                <div style={{
-                  position: 'absolute', zIndex: 50, top: '100%', left: 0, right: 0,
-                  background: 'var(--panel)', border: '1px solid var(--border)',
-                  borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,.15)',
-                  maxHeight: 200, overflowY: 'auto', marginTop: 2,
-                }}>
-                  {filtered.map(oc => (
-                    <div
-                      key={oc.id}
-                      onMouseDown={() => {
-                        ocSelectedRef.current = oc.num_oc
-                        setOcSearch(oc.num_oc)
-                        setRecHeader(h => ({ ...h, orden_compra_id: oc.id }))
-                        setShowOcDrop(false)
-                      }}
-                      style={{
-                        padding: '7px 12px', cursor: 'pointer', fontSize: 13,
-                        fontFamily: 'var(--font-mono)',
-                        background: recHeader.orden_compra_id === oc.id ? 'var(--accent-soft)' : undefined,
-                        color: recHeader.orden_compra_id === oc.id ? 'var(--accent)' : 'var(--text)',
-                      }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted-soft)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = recHeader.orden_compra_id === oc.id ? 'var(--accent-soft)' : '')}
-                    >
-                      <span style={{ fontFamily: 'var(--font-mono)' }}>{oc.num_oc}</span>
-                      {oc.tipo === 'Importacion' && (
-                        <span style={{
-                          marginLeft: 8, fontSize: 10, padding: '1px 5px',
-                          borderRadius: 4, background: 'var(--accent-soft)',
-                          color: 'var(--accent)', fontFamily: 'var(--font-sans)',
-                          fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em',
-                        }}>IMP</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : null
-            })()}
-          </div>
-
-          {/* Fecha recepción */}
-          <div className="form-field">
-            <label className="form-label">Fecha recepción *</label>
-            <input
-              type="date"
-              className="input"
-              value={recHeader.fecha_recepcion}
-              onChange={e => setRecHeader(h => ({ ...h, fecha_recepcion: e.target.value }))}
-              style={{ width: '100%' }}
-            />
-          </div>
-
-          {/* Conformidad */}
-          <div className="form-field">
-            <label className="form-label">Conformidad almacén</label>
-            <select
-              className="select"
-              value={recHeader.conf_almacen}
-              onChange={e => setRecHeader(h => ({ ...h, conf_almacen: e.target.value as ConformidadRecepcion }))}
-              style={{ width: '100%' }}
-            >
-              <option>Conforme</option>
-              <option>Observado</option>
-              <option>Rechazado</option>
-            </select>
-          </div>
-
-          {/* Motivo (si no es conforme) */}
-          {recHeader.conf_almacen !== 'Conforme' && (
-            <div className="form-field" style={{ gridColumn: '1 / -1' }}>
-              <label className="form-label">Motivo de observación</label>
-              <textarea
-                className="input"
-                rows={2}
-                value={recHeader.motivo_conf_almacen}
-                onChange={e => setRecHeader(h => ({ ...h, motivo_conf_almacen: e.target.value }))}
-                style={{ width: '100%', resize: 'vertical' }}
-              />
-            </div>
-          )}
-
-          {/* ERP Entrada */}
-          <div className="form-field">
-            <label className="form-label">N° ERP / INTA Entrada</label>
-            <input
-              className="input"
-              value={recHeader.erp_inta_entrada}
-              onChange={e => setRecHeader(h => ({ ...h, erp_inta_entrada: e.target.value }))}
-              style={{ width: '100%', fontFamily: 'var(--font-mono)' }}
-              placeholder="Ej: INTA-2026-001"
-            />
-          </div>
-
-          {/* Notas */}
-          <div className="form-field" style={{ gridColumn: '1 / -1' }}>
-            <label className="form-label">Notas</label>
-            <textarea
-              className="input"
-              rows={2}
-              value={recHeader.notas}
-              onChange={e => setRecHeader(h => ({ ...h, notas: e.target.value }))}
-              style={{ width: '100%', resize: 'vertical' }}
-            />
-          </div>
-        </div>
-
-        {/* Items de la OC */}
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>Ítems a recibir</span>
-            {recItems.length > 0 && <Badge tone="muted">{recItems.length}</Badge>}
-          </div>
-
-          {!recHeader.orden_compra_id ? (
-            <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 12.5, border: '1px dashed var(--border)', borderRadius: 6 }}>
-              Selecciona una OC para cargar los ítems
-            </div>
-          ) : loadingOcItems ? (
-            <div className="loading-row" style={{ padding: 20 }}>
-              <Icon name="spinner" size={14} style={{ animation: 'spin 1s linear infinite' }} />
-              <span style={{ marginLeft: 8 }}>Cargando ítems…</span>
-            </div>
-          ) : recItems.length === 0 ? (
-            <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 12.5, border: '1px dashed var(--border)', borderRadius: 6 }}>
-              La OC seleccionada no tiene ítems registrados
-            </div>
-          ) : (
-            <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-                <thead>
-                  <tr style={{ background: 'var(--panel-2)', borderBottom: '1px solid var(--border)' }}>
-                    {['Item OC', 'Código', 'Descripción', 'UM', 'Cant. OC', 'Cant. recibida *', ''].map(h => (
-                      <th key={h} style={{ padding: '7px 10px', textAlign: h.startsWith('Cant') ? 'right' : 'left', color: 'var(--text-3)', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {recItems.map((item, idx) => (
-                    <tr key={item.id} style={{ borderBottom: '1px solid var(--border-soft)' }}>
-                      <td style={{ padding: '6px 10px' }}>
-                        <span className="mono muted">{item.item_oc || '—'}</span>
-                      </td>
-                      <td style={{ padding: '6px 10px' }}>
-                        <span className="mono" style={{ color: 'var(--accent-2)' }}>{item.codigo_comercial}</span>
-                      </td>
-                      <td style={{ padding: '6px 10px', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.descripcion}>
-                        {item.descripcion}
-                      </td>
-                      <td style={{ padding: '6px 10px', textAlign: 'center' }}>
-                        <span className="mono muted">{item.unidad_medida}</span>
-                      </td>
-                      <td style={{ padding: '6px 10px', textAlign: 'right' }}>
-                        <span className="mono">{item.cantidad_oc}</span>
-                      </td>
-                      <td style={{ padding: '6px 10px', textAlign: 'right' }}>
-                        <input
-                          type="number"
-                          className="input"
-                          value={item.cantidad_recibida}
-                          min="0"
-                          step="any"
-                          style={{ width: 96, fontFamily: 'var(--font-mono)', textAlign: 'right', padding: '4px 8px' }}
-                          onChange={e =>
-                            setRecItems(prev =>
-                              prev.map((it, i) => i === idx ? { ...it, cantidad_recibida: e.target.value } : it),
-                            )
-                          }
-                        />
-                      </td>
-                      <td style={{ padding: '6px 10px', textAlign: 'center' }}>
-                        <button
-                          title="Quitar ítem"
-                          onClick={() => setRecItems(prev => prev.filter((_, i) => i !== idx))}
-                          style={{
-                            background: 'none', border: 'none', cursor: 'pointer',
-                            color: 'var(--text-3)', padding: '2px 6px', borderRadius: 4,
-                            lineHeight: 1, fontSize: 15,
-                          }}
-                          onMouseEnter={e => (e.currentTarget.style.color = 'var(--danger)')}
-                          onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-3)')}
-                        >✕</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </Modal>
+      {/* ── Modales (siempre montados, independientes de la vista) ──────── */}
 
       {/* ── Modal: Registrar despacho ──────────────────────────────────── */}
       <Modal

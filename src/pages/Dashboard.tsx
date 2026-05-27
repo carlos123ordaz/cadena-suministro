@@ -40,21 +40,26 @@ async function loadDashboardAlerts(): Promise<Alert[]> {
       .from('importaciones')
       .select('id, grupo_importacion, eta, status')
       .lt('eta', today)
-      .not('status', 'in', '("Cerrada","Anulada","Recibida en almacén")')
+      .neq('status', 'Cerrada')
+      .neq('status', 'Anulada')
+      .neq('status', 'Recibida en almacén')
       .order('eta', { ascending: true })
       .limit(5),
     supabase
       .from('facturas_venta')
       .select('id, num_factura, fecha_prometida_pago, operacion:operaciones(cliente:clientes!cliente_id(razon_social))')
       .lt('fecha_prometida_pago', today)
-      .not('status', 'in', `(Pagada total,Anulada)`)
+      .neq('status', 'Pagada total')
+      .neq('status', 'Anulada')
       .order('fecha_prometida_pago', { ascending: true })
       .limit(5),
     supabase
       .from('ordenes_compra')
       .select('id, numero_oc, fecha_ofrecida, status')
       .lt('fecha_ofrecida', today)
-      .not('status', 'in', `(Recibido completo,Cerrado,Anulado)`)
+      .neq('status', 'Recibido completo')
+      .neq('status', 'Cerrado')
+      .neq('status', 'Anulado')
       .order('fecha_ofrecida', { ascending: true })
       .limit(3),
   ])

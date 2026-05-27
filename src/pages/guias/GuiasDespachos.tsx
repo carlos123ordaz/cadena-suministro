@@ -217,7 +217,17 @@ export function GuiasDespachos() {
   async function handleCambiarEstadoGuia() {
     if (!selectedGuia || !nuevoEstadoGuia) return
     setSavingEstadoGuia(true)
-    await supabase.from('guias_remision').update({ estado: nuevoEstadoGuia }).eq('id', selectedGuia.id)
+    const { error } = await supabase.from('guias_remision').update({ estado: nuevoEstadoGuia }).eq('id', selectedGuia.id)
+    if (!error) {
+      await supabase.from('historial_eventos').insert({
+        entidad_tipo: 'guia',
+        entidad_id: selectedGuia.id,
+        usuario_id: profile?.id ?? null,
+        accion: 'Cambio de estado',
+        valor_anterior: selectedGuia.estado ?? null,
+        valor_nuevo: nuevoEstadoGuia,
+      })
+    }
     setSavingEstadoGuia(false)
     setShowEstadoGuia(false)
     setSelectedGuia(null)
@@ -228,7 +238,17 @@ export function GuiasDespachos() {
   async function handleCambiarEstadoDesp() {
     if (!selectedDesp || !nuevoEstadoDesp) return
     setSavingEstadoDesp(true)
-    await supabase.from('despachos').update({ estado: nuevoEstadoDesp }).eq('id', selectedDesp.id)
+    const { error } = await supabase.from('despachos').update({ estado: nuevoEstadoDesp }).eq('id', selectedDesp.id)
+    if (!error) {
+      await supabase.from('historial_eventos').insert({
+        entidad_tipo: 'despacho',
+        entidad_id: selectedDesp.id,
+        usuario_id: profile?.id ?? null,
+        accion: 'Cambio de estado',
+        valor_anterior: selectedDesp.estado ?? null,
+        valor_nuevo: nuevoEstadoDesp,
+      })
+    }
     setSavingEstadoDesp(false)
     setShowEstadoDesp(false)
     setSelectedDesp(null)

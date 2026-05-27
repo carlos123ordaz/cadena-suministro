@@ -118,12 +118,13 @@ export function ComprasLocalesDetail() {
     if (opciSearch.length === 0) return
     const t = setTimeout(async () => {
       const { data } = await supabase.from('operaciones')
-        .select('id, correlativo_opci')
+        .select('id, correlativo_opci, operacion_items!inner(sub_tipo_negocio)')
+        .eq('operacion_items.sub_tipo_negocio', 'Local')
         .ilike('correlativo_opci', `%${opciSearch}%`)
         .not('estado', 'in', '("Cerrada","Anulada")')
         .order('correlativo_opci')
         .limit(20)
-      setOpciSugeridas((data ?? []) as { id: string; correlativo_opci: string }[])
+      setOpciSugeridas((data ?? []).map((d: Record<string, unknown>) => ({ id: d.id as string, correlativo_opci: d.correlativo_opci as string })))
       setShowOpciDrop(true)
     }, 250)
     return () => clearTimeout(t)
@@ -141,11 +142,12 @@ export function ComprasLocalesDetail() {
     setShowOpciDrop(true)
     if (!opciSearch) {
       const { data } = await supabase.from('operaciones')
-        .select('id, correlativo_opci')
+        .select('id, correlativo_opci, operacion_items!inner(sub_tipo_negocio)')
+        .eq('operacion_items.sub_tipo_negocio', 'Local')
         .not('estado', 'in', '("Cerrada","Anulada")')
         .order('correlativo_opci')
         .limit(20)
-      setOpciSugeridas((data ?? []) as { id: string; correlativo_opci: string }[])
+      setOpciSugeridas((data ?? []).map((d: Record<string, unknown>) => ({ id: d.id as string, correlativo_opci: d.correlativo_opci as string })))
     }
   }
 
@@ -200,9 +202,19 @@ export function ComprasLocalesDetail() {
     if (!id) return
     setEstadoSaving(true)
     setEstadoError(null)
+    const estadoAnterior = detail?.status
     const { error } = await updateOrdenCompraLocal(id, { status: estadoForm.status })
     setEstadoSaving(false)
     if (error) { setEstadoError('No se pudo actualizar.'); return }
+    await supabase.from('historial_eventos').insert({
+      entidad_tipo: 'orden_compra_local',
+      entidad_id: id,
+      usuario_id: profile?.id ?? null,
+      accion: 'Cambio de estado',
+      valor_anterior: estadoAnterior ?? null,
+      valor_nuevo: estadoForm.status,
+      comentario: estadoForm.comentario || null,
+    })
     setShowEstado(false)
     load()
   }

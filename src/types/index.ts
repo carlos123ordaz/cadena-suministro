@@ -149,7 +149,7 @@ export type EstadoItem =
   | 'Despachado'
   | 'Entregado'
 
-export type TipoNegocio = 'Venta' | 'Servicio'
+export type TipoNegocio = 'Venta' | 'Servicio' | 'Proyecto'
 export type SubTipoNegocio = 'Importación' | 'Local' | 'Servicio'
 export type SubTipoNegocio2 = 'Backorder' | 'Consumo Interno' | 'Demo' | 'Garantía' | 'Stock' | 'Venta Bajo Pedido'
 

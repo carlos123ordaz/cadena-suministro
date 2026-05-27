@@ -53,22 +53,30 @@ export function ImportacionesList() {
   const navigate = useNavigate()
   const { profile } = useAuth()
 
+  // Filtros con persistencia
+  const _sf = (() => { try { return JSON.parse(localStorage.getItem('filters_importaciones') ?? '{}') } catch { return {} } })()
+
   // ── View mode ──────────────────────────────────────────────────────────
-  const [viewMode, setViewMode] = useState<'grupos' | 'ocis'>('grupos')
+  const [viewMode, setViewMode] = useState<'grupos' | 'ocis'>(_sf.viewMode ?? 'grupos')
 
   // ── Grupos state ───────────────────────────────────────────────────────
   const [importaciones, setImportaciones] = useState<Importacion[]>([])
   const [loading, setLoading] = useState(true)
-  const [q, setQ] = useState('')
-  const [estado, setEstado] = useState('')
-  const [incoterm, setIncoterm] = useState('')
-  const [tipoEmbarque, setTipoEmbarque] = useState('')
+  const [q, setQ] = useState<string>(_sf.q ?? '')
+  const [estado, setEstado] = useState<string>(_sf.estado ?? '')
+  const [incoterm, setIncoterm] = useState<string>(_sf.incoterm ?? '')
+  const [tipoEmbarque, setTipoEmbarque] = useState<string>(_sf.tipoEmbarque ?? '')
 
   // ── OCIs state ─────────────────────────────────────────────────────────
   const [ociRows, setOciRows] = useState<OrdenCompraImportacion[]>([])
   const [ociLoading, setOciLoading] = useState(false)
-  const [ociSearch, setOciSearch] = useState('')
-  const [ociFilterEstado, setOciFilterEstado] = useState<EstadoOCI | ''>('')
+  const [ociSearch, setOciSearch] = useState<string>(_sf.ociSearch ?? '')
+  const [ociFilterEstado, setOciFilterEstado] = useState<EstadoOCI | ''>(_sf.ociFilterEstado ?? '')
+
+  // Guardar filtros en localStorage
+  useEffect(() => {
+    localStorage.setItem('filters_importaciones', JSON.stringify({ viewMode, q, estado, incoterm, tipoEmbarque, ociSearch, ociFilterEstado }))
+  }, [viewMode, q, estado, incoterm, tipoEmbarque, ociSearch, ociFilterEstado])
   const [selectedOciId, setSelectedOciId] = useState<string | null>(null)
 
   // ── Nueva OCI (standalone) ─────────────────────────────────────────────
@@ -111,6 +119,24 @@ export function ImportacionesList() {
   const [confirmDeleteGrupo, setConfirmDeleteGrupo] = useState<Importacion | null>(null)
   const [deletingGrupo, setDeletingGrupo] = useState(false)
   const [deleteGrupoError, setDeleteGrupoError] = useState<string | null>(null)
+
+  // ── Listas para dropdowns (cargadas desde parametros_lista) ────────────
+  const [paisList, setPaisList] = useState<string[]>([])
+  const [ciudadList, setCiudadList] = useState<string[]>([])
+
+  useEffect(() => {
+    supabase
+      .from('parametros_lista')
+      .select('tipo, valor, orden')
+      .in('tipo', ['pais_embarque', 'ciudad_embarque'])
+      .order('orden')
+      .then(({ data }) => {
+        const paises = (data ?? []).filter(r => r.tipo === 'pais_embarque').map(r => r.valor as string)
+        const ciudades = (data ?? []).filter(r => r.tipo === 'ciudad_embarque').map(r => r.valor as string)
+        setPaisList(paises)
+        setCiudadList(ciudades)
+      })
+  }, [])
 
   async function handleExport() {
     setExporting(true)
@@ -239,7 +265,7 @@ export function ImportacionesList() {
       flete_usd: impForm.flete_usd ? parseFloat(impForm.flete_usd) : undefined,
       observaciones: impForm.observaciones || undefined,
       status: 'Borrador',
-    })
+    }, profile?.id)
     setSavingNueva(false)
     if (error || !data) { setErrorNueva(fmtDbError(error, 'Error al crear.')); return }
     setShowNueva(false)
@@ -579,17 +605,47 @@ export function ImportacionesList() {
             {['Marítimo FCL','Marítimo LCL','Aéreo','Terrestre','Courier'].map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
-        <div className="form-field">
+        <div className="form-field" style={{ position: 'relative' }}>
           <label className="form-label">País de origen</label>
-          <input className="input" value={form.pais_origen} onChange={e => setForm(f => ({ ...f, pais_origen: e.target.value }))} style={{ width: '100%' }} placeholder="China, Alemania…" />
+          <input
+            className="input"
+            value={form.pais_origen}
+            list="dl-pais-origen"
+            onChange={e => setForm(f => ({ ...f, pais_origen: e.target.value }))}
+            style={{ width: '100%' }}
+            placeholder="Buscar o escribir país…"
+          />
+          <datalist id="dl-pais-origen">
+            {paisList.map(p => <option key={p} value={p} />)}
+          </datalist>
         </div>
-        <div className="form-field">
+        <div className="form-field" style={{ position: 'relative' }}>
           <label className="form-label">País de embarque</label>
-          <input className="input" value={form.pais_embarque} onChange={e => setForm(f => ({ ...f, pais_embarque: e.target.value }))} style={{ width: '100%' }} />
+          <input
+            className="input"
+            value={form.pais_embarque}
+            list="dl-pais-embarque"
+            onChange={e => setForm(f => ({ ...f, pais_embarque: e.target.value }))}
+            style={{ width: '100%' }}
+            placeholder="Buscar o escribir país…"
+          />
+          <datalist id="dl-pais-embarque">
+            {paisList.map(p => <option key={p} value={p} />)}
+          </datalist>
         </div>
-        <div className="form-field">
+        <div className="form-field" style={{ position: 'relative' }}>
           <label className="form-label">Ciudad de embarque</label>
-          <input className="input" value={form.ciudad_embarque} onChange={e => setForm(f => ({ ...f, ciudad_embarque: e.target.value }))} style={{ width: '100%' }} placeholder="Shanghái, Hamburgo…" />
+          <input
+            className="input"
+            value={form.ciudad_embarque}
+            list="dl-ciudad-embarque"
+            onChange={e => setForm(f => ({ ...f, ciudad_embarque: e.target.value }))}
+            style={{ width: '100%' }}
+            placeholder="Buscar o escribir ciudad…"
+          />
+          <datalist id="dl-ciudad-embarque">
+            {ciudadList.map(c => <option key={c} value={c} />)}
+          </datalist>
         </div>
         <div className="form-field">
           <label className="form-label">ETA estimada</label>

@@ -93,6 +93,14 @@ export async function registrarRecepcion(
       { onConflict: 'almacen_id,producto_codigo' },
     )
 
+  await supabase.from('historial_eventos').insert({
+    entidad_tipo: 'recepcion',
+    entidad_id: rec.id,
+    usuario_id: userId,
+    accion: 'Recepción registrada',
+    valor_nuevo: `${rec.codigo_comercial} × ${rec.cantidad_recibida} ${rec.unidad_medida ?? ''}`.trim(),
+  })
+
   return { data: rec, error: null }
 }
 
@@ -155,6 +163,14 @@ export async function registrarDespacho(
       { almacen_id: des.almacen_id, producto_codigo: des.codigo_comercial, cantidad: stockFinal },
       { onConflict: 'almacen_id,producto_codigo' },
     )
+
+  await supabase.from('historial_eventos').insert({
+    entidad_tipo: 'despacho',
+    entidad_id: des.id,
+    usuario_id: userId,
+    accion: 'Despacho registrado',
+    valor_nuevo: `${des.codigo_comercial} × ${des.cantidad} ${des.unidad_medida ?? ''}`.trim(),
+  })
 
   return { data: des, error: null }
 }

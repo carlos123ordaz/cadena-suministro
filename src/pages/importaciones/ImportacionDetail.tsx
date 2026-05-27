@@ -138,6 +138,7 @@ export function ImportacionDetail() {
   // ── Edit OCI (from items tab) ──────────────────────────────────────────
   const [showEditOci, setShowEditOci] = useState(false)
   const [editOciId, setEditOciId] = useState<string | null>(null)
+  const [editOciStatusAnterior, setEditOciStatusAnterior] = useState('')
   const [editOciProv, setEditOciProv] = useState<ProveedorOption | null>(null)
   const [editOciForm, setEditOciForm] = useState({
     num_oc: '', fecha_oc: '', moneda: 'USD', monto_total: '',
@@ -234,6 +235,7 @@ export function ImportacionDetail() {
       setEditGrupoError('El nombre del grupo es obligatorio.'); return
     }
     setSavingEditGrupo(true); setEditGrupoError(null)
+    const statusAnterior = imp?.status
     const { error } = await updateImportacion(importacionId, {
       grupo_importacion: editGrupoForm.grupo_importacion.trim(),
       operador_logistico: editGrupoForm.operador_logistico || undefined,
@@ -251,12 +253,23 @@ export function ImportacionDetail() {
     })
     setSavingEditGrupo(false)
     if (error) { setEditGrupoError(fmtDbError(error, 'Error al actualizar.')); return }
+    if (editGrupoForm.status && editGrupoForm.status !== statusAnterior) {
+      await supabase.from('historial_eventos').insert({
+        entidad_tipo: 'importacion',
+        entidad_id: importacionId,
+        usuario_id: profile?.id ?? null,
+        accion: 'Cambio de estado',
+        valor_anterior: statusAnterior ?? null,
+        valor_nuevo: editGrupoForm.status,
+      })
+    }
     setShowEditGrupo(false)
     load()
   }
 
   function openEditOci(oci: Record<string, unknown>) {
     setEditOciId(oci.id as string)
+    setEditOciStatusAnterior(oci.status as string ?? '')
     const prov = oci.proveedor as { razon_social?: string } | undefined
     setEditOciProv(oci.proveedor_id ? { id: oci.proveedor_id as string, razon_social: prov?.razon_social ?? '' } : null)
     setEditOciForm({
@@ -298,6 +311,16 @@ export function ImportacionDetail() {
     }).eq('id', editOciId)
     setSavingEditOci(false)
     if (error) { setEditOciError(fmtDbError(error, 'Error al actualizar.')); return }
+    if (editOciId && editOciForm.status && editOciForm.status !== editOciStatusAnterior) {
+      await supabase.from('historial_eventos').insert({
+        entidad_tipo: 'orden_compra_importacion',
+        entidad_id: editOciId,
+        usuario_id: profile?.id ?? null,
+        accion: 'Cambio de estado',
+        valor_anterior: editOciStatusAnterior || null,
+        valor_nuevo: editOciForm.status,
+      })
+    }
     setShowEditOci(false)
     load()
   }
